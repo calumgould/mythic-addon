@@ -2,15 +2,21 @@ import { defineConfig, Plugin } from "vite";
 import copy from "rollup-plugin-copy";
 import * as fsPromises from "fs/promises";
 
+const moduleVersion = process.env.MODULE_VERSION;
+const githubProject = process.env.GH_PROJECT;
+const githubTag = process.env.GH_TAG;
+
 const updateModuleManifestPlugin = (): Plugin => {
     return {
         name: "update-module-manifest",
         async writeBundle(): Promise<void> {
-            const moduleVersion = process.env.MODULE_VERSION;
-            const githubProject = process.env.GH_PROJECT;
-            const githubTag = process.env.GH_TAG;
+            const packageContents = JSON.parse(
+                await fsPromises.readFile("./package.json", "utf-8")
+              ) as Record<string, unknown>;
 
-            const manifestContents: string = await fsPromises.readFile(
+              const version = moduleVersion || (packageContents.version as string);
+
+              const manifestContents: string = await fsPromises.readFile(
                 "src/module.json",
                 "utf-8"
               );
@@ -20,9 +26,7 @@ const updateModuleManifestPlugin = (): Plugin => {
                 unknown
               >;
 
-              if (moduleVersion) {
-                manifestJson["version"] = moduleVersion;
-              }
+              manifestJson["version"] = version;
 
               if (githubProject) {
                 const baseUrl = `https://github.com/${githubProject}/releases`;

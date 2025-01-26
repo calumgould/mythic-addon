@@ -1,7 +1,7 @@
 {
   "name": "mythic_addon",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.1",
   "scripts": {
     "build": "tsc && ts-node src/utils/convertScriptToPack.ts && vite build"
   },
