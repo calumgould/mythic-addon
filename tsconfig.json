@@ -25,7 +25,7 @@
     "noUncheckedSideEffectImports": true,
     "types": [
       "node",
-      "fvtt-types",
+      "@league-of-foundry-developers/foundry-vtt-types",
     ],
   },
   "include": [
