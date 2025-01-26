@@ -1,0 +1,40 @@
+{
+    "id": "mythic-addon",
+    "title": "Mythic Addon Module",
+    "description": "A collection of utilities for the Halo Mythic TTRPG",
+    "authors": [
+        {
+            "name": "Calum Gould"
+        }
+    ],
+    "version": "0.1.2",
+    "compatibility": {
+        "minimum": "11",
+        "verified": "11"
+    },
+    "esmodules": [
+        "scripts/module.js"
+    ],
+    "packFolders": [
+        {
+            "name": "Mythic Addon Macros",
+            "ownership": {
+                "PLAYER": "NONE",
+                "ASSISTANT": "OWNER"
+            },
+            "packs": [
+                "mythic-addon-macros",
+                "mythic-addon-macros-2"
+            ]
+        }
+    ],
+    "packs": [
+        {
+            "name": "mythic-addon-macros",
+            "label": "Mythic Addon Macros",
+            "path": "packs/macros-mythic.db",
+            "module": "mythic-addon",
+            "type": "Macro"
+        }
+    ]
+}

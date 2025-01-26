@@ -1,0 +1,18 @@
+{
+  "name": "mythic_addon",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc && ts-node src/utils/convertScriptToPack.ts && vite build"
+  },
+  "devDependencies": {
+    "fvtt-types": "../foundry-vtt-types",
+    "prettier": "^3.4.2",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.5"
+  },
+  "dependencies": {
+    "rollup-plugin-copy": "^3.5.0"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "_id": "damage-calculator",
+  "name": "Damage Calculator",
+  "type": "script",
+  "scope": "global",
+  "command": "console.log(\"macro game\", game)\n\nif (!canvas) {\n    console.error(\"Canvas not loaded.\")\n}\n\nconst user = game.user\n\n// If there's an active selected token then use that as the character\nconst selectedToken = canvas?.tokens?.controlled[0]\n\nconsole.log(\"user\", user)\nconsole.log(\"selectedToken\", selectedToken)\n\nChatMessage.create({\n    content: 'End of macro'\n});"
+}
