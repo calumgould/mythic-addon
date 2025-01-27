@@ -28,7 +28,7 @@
     ],
     "packFolders": [
         {
-            "name": "Mythic Addon Macros",
+            "name": "Mythic Addon",
             "packs": [
                 "mythic-addon-macros"
             ]
