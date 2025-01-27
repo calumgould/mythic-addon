@@ -12,6 +12,14 @@
         "minimum": "11",
         "verified": "11"
     },
+    "systems": ["mythic"],
+    "dependencies": [
+        {
+            "name": "mythic",
+            "type": "system",
+      "     manifest": "https://raw.githubusercontent.com/AugmenTab/mythic/main/system.json"
+        }
+    ],
     "esmodules": [
         "scripts/module.js"
     ],

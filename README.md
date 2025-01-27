@@ -1,3 +1,4 @@
-## Notes
+## Mythic Addon Module
 
-v11.315.0-beta isn't available on npm so instead we're using a local clone, checked out to the v11.315.0-beta tag
+This is an addon module for the Mythic system, which can be found here https://github.com/AugmenTab/mythic
+
