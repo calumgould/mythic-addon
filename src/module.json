@@ -29,13 +29,8 @@
     "packFolders": [
         {
             "name": "Mythic Addon Macros",
-            "ownership": {
-                "PLAYER": "NONE",
-                "ASSISTANT": "OWNER"
-            },
             "packs": [
-                "mythic-addon-macros",
-                "mythic-addon-macros-2"
+                "mythic-addon-macros"
             ]
         }
     ],
