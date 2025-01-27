@@ -1,4 +1,6 @@
 const createMacros = async () => {
+    console.log("Creating macros")
+
     const testMacro = await Macro.create({
         name: 'Mythic addon test macro',
         type: 'script',
@@ -7,7 +9,12 @@ const createMacros = async () => {
         permission: { default: 0 }
     })
 
+    console.log("Macro created", testMacro)
+
     const compendium = await game.packs.get('mythic-addon.mythic-addon-macros');
+
+    console.log("Compendium", compendium)
+
     await compendium.importEntity(testMacro)
 }
 
