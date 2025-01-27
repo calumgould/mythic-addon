@@ -17,7 +17,7 @@
         {
             "name": "mythic",
             "type": "system",
-      "     manifest": "https://raw.githubusercontent.com/AugmenTab/mythic/main/system.json"
+            "manifest": "https://raw.githubusercontent.com/AugmenTab/mythic/main/system.json"
         }
     ],
     "esmodules": [
