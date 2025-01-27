@@ -4,3 +4,4 @@ declare const Hooks: any;
 declare const game: any;
 declare const canvas: any;
 declare const ChatMessage: any
+declare const Dialog: any

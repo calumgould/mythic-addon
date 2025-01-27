@@ -1,22 +1,17 @@
 import fs from 'fs'
 import path from 'path'
+import { v4 as uuidv4 } from 'uuid'
 
-const damageCalculatorCommand = fs.readFileSync(path.join(__dirname, '../scripts/macros/damageCalculator.ts'), 'utf-8');
+const damageCalculatorCommand = fs.readFileSync(path.join(__dirname, '../scripts/macros/damageCalculator.js'), 'utf-8');
 
 const damageCalculatorMacro = {
-    _id: 'damage-calculator',
+    _id: uuidv4(),
     name: 'Damage Calculator',
     type: 'script',
     scope: 'global',
     command: damageCalculatorCommand
 }
 
-console.log('Writing macros to file')
-
 const macrosDbPath = path.join(__dirname, '../packs/macros-mythic.db');
 
-console.log('macrosDbPath', macrosDbPath)
-
 fs.writeFileSync(macrosDbPath, JSON.stringify(damageCalculatorMacro, null, 2), 'utf-8')
-
-console.log('Done writing macros to file')

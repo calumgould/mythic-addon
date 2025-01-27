@@ -1,10 +1,21 @@
 import { defineConfig, Plugin } from "vite";
 import copy from "rollup-plugin-copy";
 import * as fsPromises from "fs/promises";
+import fs from 'fs-extra'
 
 const moduleVersion = process.env.MODULE_VERSION;
 const githubProject = process.env.GH_PROJECT;
 const githubTag = process.env.GH_TAG;
+
+// Vite doesn't clean the build folder by default, so we need to do it ourselves
+const cleanBuild = () => {
+  return {
+    name: 'clean-build',
+    buildStart() {
+      fs.emptyDirSync('dist')
+    }
+  }
+}
 
 const updateModuleManifestPlugin = (): Plugin => {
     return {
@@ -61,6 +72,7 @@ export default defineConfig({
         },
     },
     plugins: [
+        cleanBuild(),
         updateModuleManifestPlugin(),
         copy({
           targets: [
@@ -68,6 +80,7 @@ export default defineConfig({
             { src: "src/packs", dest: "dist" },
             { src: "src/styles", dest: "dist" },
             { src: "src/templates", dest: "dist" },
+            { src: "src/scripts/macros", dest: "dist/scripts" }
           ],
           hook: "writeBundle",
         }),

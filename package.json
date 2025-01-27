@@ -6,12 +6,16 @@
     "build": "tsc && ts-node src/utils/convertScriptToPack.ts && vite build"
   },
   "devDependencies": {
+    "@types/node": "^22.10.10",
+    "@types/uuid": "^10.0.0",
     "prettier": "^3.4.2",
     "ts-node": "^10.9.2",
     "typescript": "~5.6.2",
     "vite": "^6.0.5"
   },
   "dependencies": {
-    "rollup-plugin-copy": "^3.5.0"
+    "fs-extra": "^11.3.0",
+    "rollup-plugin-copy": "^3.5.0",
+    "uuid": "^11.0.5"
   }
 }
