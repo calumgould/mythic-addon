@@ -1,13 +1,13 @@
 {
     "id": "mythic-addon",
     "title": "Mythic Addon Module",
-    "description": "A collection of utilities for the Halo Mythic TTRPG",
+    "description": "A collection of utilities for the fan-made Mythic system on Foundry.",
     "authors": [
         {
             "name": "Calum Gould"
         }
     ],
-    "version": "0.0.11",
+    "version": "0.1.1",
     "compatibility": {
         "minimum": "11",
         "verified": "11"

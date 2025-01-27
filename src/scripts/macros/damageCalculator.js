@@ -43,30 +43,37 @@ const getLastAttackFromChat = () => {
     return lastAttackMessage
 }
 
+// This function extracts the data from the html string of the last attack message, then loops over each hit and extracts the damage instances, with damage, pierce and hit location
 const extractDataForHits = (htmlString) => {
     const parsedHtml = parser.parseFromString(htmlString, 'text/html');
 
     const hits = Array.from(parsedHtml.querySelectorAll('.post-attack div'))
     .filter(attacks => attacks.querySelector('.damage-block'))
     .map(hit => {
+        // hitOutcome is a div that contains the number number
         const hitOutcome = hit.querySelector('.outcome')
 
         // the hitNumber is the first p tag in the outcome div
         const hitTag = hitOutcome.querySelector('p')
         const hitNumber = hitTag.textContent.trim() || '?'
 
+        // damageBlock is a div that contains the damage instances, pierce and location
         const damageBlock = hit.querySelector('.damage-block')
 
         const additions = damageBlock.querySelector('.damage-block p').textContent.trim();
 
+        // Look through the element for pierce
         const pierceMatch = additions.match(/Pierce\s(\d+)/);
         const pierce = pierceMatch ? pierceMatch[1] : null;
 
+        // Look through the element for location
         const locationMatch = additions.match(/:\s([a-zA-Z\s-]+)\s-/);
         const location = locationMatch ? locationMatch[1].trim() : null;
 
         const rollResults = damageBlock.querySelectorAll('.inline-roll.inline-result')
 
+        // Loop over each damage instance and extract the damage
+        // If there are multiple damage instances, e.g. burst fire, the pierce and hit location are the same so we can just use the above values
         const damageInstances = Array.from(rollResults).map((result) => {
             const damage = result.textContent.trim();
 
@@ -112,7 +119,7 @@ const calculateDamage = ({ damage, pierce, location, resistance, weaponTraits, c
 
     // If the target has shields then the damage should be applied to the shields first
     if (shields > 0) {
-        const { shieldDamage, armourDamage } = calculateShieldDamage({ damage, pierce, weaponTraits, shields })
+        const { shieldDamage, armourDamage } = calculateShieldDamage({ damage, pierce, weaponTraits, shields, isHitLocationInCover, coverPoints })
 
         // If no damage got through to the target's armour, we don't need to do anything else
         if (armourDamage <= 0) {
@@ -137,18 +144,21 @@ const calculateDamage = ({ damage, pierce, location, resistance, weaponTraits, c
     return { shieldDamage: 0, woundDamage: damageThroughResistance }
 }
 
-const calculateShieldDamage = ({ damage, pierce, weaponTraits, shields }) => {
+const calculateShieldDamage = ({ damage, pierce, weaponTraits, shields, isHitLocationInCover, coverPoints }) => {
     const damageToShields = weaponTraits.weaponAddsPierceAgainstShields
         ? damage + pierce
         : damage
 
+    // Cover still applies when damaging shields, so we need to reduce the damage by the coverPoints value if the target is in cover
+    const effectiveDamage = isHitLocationInCover ? damageToShields - coverPoints : damageToShields
+
     // If the shield health is greater than the damage, then the shields absorb all the damage and we don't need to do anything else
-    if (shields > damageToShields) {
-        return { shieldDamage: damageToShields, armourDamage: 0 }
+    if (shields > effectiveDamage) {
+        return { shieldDamage: effectiveDamage, armourDamage: 0 }
     }
 
     // If shields would be depleted, the remaining damage goes through to the target's armour
-    let damageThroughToArmour = damageToShields - shields
+    let damageThroughToArmour = effectiveDamage - shields
 
     // If pierce was added to the damage against shields, it no longer applies when damage spills through to the target's armour
     // Pierce is also applied first to the shields, before any of the base damage
@@ -381,6 +391,11 @@ new Dialog({
 
             const lastAttackMessage = getLastAttackFromChat()
 
+            if (!lastAttackMessage) {
+                console.error('No attack message found in chat')
+                return
+            }
+
             // Extract data from the last attack
             const hitData = extractDataForHits(lastAttackMessage.content)
             const lastAttackHtml = parser.parseFromString(lastAttackMessage.content, 'text/html');
@@ -457,6 +472,12 @@ new Dialog({
         const damageInstancesContainer = html.find('.damage-instances-container');
 
         const lastAttackMessage = getLastAttackFromChat()
+
+        if (!lastAttackMessage) {
+            console.error('No attack message found in chat')
+            return
+        }
+
         const hitData = extractDataForHits(lastAttackMessage.content)
 
         hitData.forEach((hit) => {
