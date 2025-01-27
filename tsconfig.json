@@ -24,11 +24,11 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
     "types": [
-      "node",
-      "@league-of-foundry-developers/foundry-vtt-types",
+      "node"
     ],
   },
   "include": [
-    "src"
+    "src",
+    "foundry.d.ts"
   ]
 }

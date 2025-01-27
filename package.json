@@ -6,7 +6,6 @@
     "build": "tsc && ts-node src/utils/convertScriptToPack.ts && vite build"
   },
   "devDependencies": {
-    "@league-of-foundry-developers/foundry-vtt-types": "github:calumgould/foundry-vtt-types#release/11.315.0-beta",
     "prettier": "^3.4.2",
     "ts-node": "^10.9.2",
     "typescript": "~5.6.2",
