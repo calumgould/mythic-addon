@@ -7,7 +7,7 @@
             "name": "Calum Gould"
         }
     ],
-    "version": "0.0.1",
+    "version": "0.0.11",
     "compatibility": {
         "minimum": "11",
         "verified": "11"
@@ -38,7 +38,7 @@
         {
             "name": "mythic-addon-macros",
             "label": "Mythic Addon Macros",
-            "path": "packs/macros-mythic.db",
+            "path": "packs/macros-mythic",
             "module": "mythic-addon",
             "type": "Macro"
         }
