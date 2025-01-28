@@ -4,16 +4,16 @@ This is an addon module for the Mythic system, which can be found here https://g
 
 Specifically based on the Mythic 6.3 rules
 
-## Install
+## Installation
 
 Enter this as the "Manifest URL" when installing modules on Foundry:
 https://github.com/calumgould/mythic-addon/releases/latest/download/module.json
 
 If you just want the macro to copy and paste into your game you get find it here -> [damageCalculator.js](src/scripts/macros/damageCalculator.js)
 
-### Current Features
+## Current Features
 
-#### Damage Calculator
+### Damage Calculator
 
 Macro that reads the latest attack from the chat messages and calculates the damage that the selected token takes (falls back to the current character if no token is selected).
 
@@ -21,7 +21,7 @@ This is still early in development and I am still very new to the Mythic system,
 
 Will mostly just be updating the functionality as they are encountered in my sessions.
 
-##### Features
+#### Features
 
 So far the logic covers the basics, plus:
 - Burst fire (multiple damage instances on one hit)
