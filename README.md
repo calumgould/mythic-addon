@@ -2,7 +2,7 @@
 
 This is an addon module for the Mythic system, which can be found here https://github.com/AugmenTab/mythic
 
-Specifically based on the Mythic 6.3 rules
+Currently based on the Mythic v6.3 rulebook.
 
 ## Installation
 
