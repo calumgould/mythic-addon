@@ -107,7 +107,8 @@ const extractDataForHits = (htmlString) => {
 
 const handleWeaponSpecialRules = (weaponSpecialRules) => {
     // If the weapon has any of these special rules, when damaging energy shields it adds the weapon's pierce to the damage
-    const specialRuleAddPierceAgainstShield = ['Penetrating', 'Spread', 'Cauterize', 'Kinetic', 'Blast', 'Kill', 'Carpet']
+    // Penetrating weapons also fall into this category but they are handled separately
+    const specialRuleAddPierceAgainstShield = ['Spread', 'Cauterize', 'Kinetic', 'Blast', 'Kill', 'Carpet']
 
     const addsPierceAgainstEnergyShields = weaponSpecialRules.some(trait => specialRuleAddPierceAgainstShield.includes(trait))
 
@@ -149,8 +150,21 @@ const calculateDamage = ({ damage, pierce, location, resistance, weaponSpecialRu
     const applyHeadshot = location === 'Head' && weaponSpecialRules.headshot
     const isHitLocationInCover = coverLocations[mappedHitLocation]
 
-    // When a weapon has the headshot special rule, it ignores the toughness modifier when calculating resistance
-    let resistanceAtHitLocation = applyHeadshot ? resistance[mappedHitLocation].protection : resistance[mappedHitLocation].resistance
+    let resistanceAtHitLocation = resistance[mappedHitLocation].resistance
+
+    // Protection is the armour without toughness modifier applied
+    if (applyHeadshot) {
+        resistanceAtHitLocation = resistance[mappedHitLocation].protection
+    }
+
+    // Blast weapons always hit the location with the lowest armour
+    // Locations in cover should not be considered for the damage
+    if (weaponSpecialRules.blast) {
+        const locationsNotInCover = Object.entries(resistance).filter(([location]) => !coverLocations[location])
+        const lowestResistanceNotInCover = Math.min(...Object.values(locationsNotInCover).map(([_, armour]) => armour.resistance));
+
+        resistanceAtHitLocation = lowestResistanceNotInCover
+    }
 
     // If location being hit is in cover, add the cover points to the overall resistance
     if (isHitLocationInCover) {

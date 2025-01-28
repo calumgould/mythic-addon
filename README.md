@@ -15,19 +15,29 @@ If you just want the macro to copy and paste into your game you get find it here
 
 #### Damage Calculator
 
-Macro that reads the latest attack from the chat messages and calculates the damage that the selected token or current character takes.
+Macro that reads the latest attack from the chat messages and calculates the damage that the selected token takes (falls back to the current character if no token is selected).
 
-This is still early in development and is likely missing a lot of interactions that should be specifically handled.
+This is still early in development and I am still very new to the Mythic system, so there's definitely a lot of missing interactions, and you could see unexpected results if your case isn't covered below.
+
+Will mostly just be updating the functionality as they are encountered in my sessions.
+
+##### Features
 
 So far the logic covers the basics, plus:
-- Ignore certain hits (e.g. evading)
-- Headshots (weapons with headshot special rule)
 - Burst fire (multiple damage instances on one hit)
 - Energy shields
-- Areas of target being in cover
-- Extra pierce (e.g. from a charge attack)
-- Damage multiplier (e.g. from kill radius on a grenade)
+- Weapon special rules:
+  - Headshot
+  - Penetrating
+  - Kinetic
+  - Blast
+  - Various special rules that do bonus damage against energy shields
 
-Also includes:
+
+Also includes some extra options on the form:
 - Whisper result
-  - This option will send the result as a whisper to the player who triggered the macro instead of publicly.
+  - This option will send the result as a whisper to the player who triggered the macro instead of a public message.
+- Damage multiplier (e.g. from kill radius on a grenade)
+-  Extra pierce (e.g. from a charge attack)
+- Areas of target being in cover
+- Ignore certain hits (e.g. evading)
