@@ -19,7 +19,7 @@ Macro that reads the latest attack from the chat messages and calculates the dam
 
 This is still early in development and I am still very new to the Mythic system, so there's definitely a lot of missing interactions, and you could see unexpected results if your case isn't covered below.
 
-Will mostly just be updating the functionality as they are encountered in my sessions.
+I'll mostly just be updating the functionality as they are encountered in my sessions, but if you have any requests please create an issue with detailed examples of what scenario you'd like covered and I'll consider adding it.
 
 #### Features
 
