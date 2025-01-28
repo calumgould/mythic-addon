@@ -1,6 +1,15 @@
-## Mythic Addon Module
+# Mythic Addon Module
 
 This is an addon module for the Mythic system, which can be found here https://github.com/AugmenTab/mythic
+
+Specifically based on the Mythic 6.3 rules
+
+## Install
+
+Enter this as the "Manifest URL" when installing modules on Foundry:
+https://github.com/calumgould/mythic-addon/releases/latest/download/module.json
+
+If you just want the macro to copy and paste into your game you get find it here -> [damageCalculator.js](src/scripts/macros/damageCalculator.js)
 
 ### Current Features
 
@@ -14,7 +23,7 @@ So far the logic covers the basics, plus:
 - Ignore certain hits (e.g. evading)
 - Headshots (weapons with headshot special rule)
 - Burst fire (multiple damage instances on one hit)
-- Shields (including some weapons adding their pierce to shield damage)
+- Energy shields
 - Areas of target being in cover
 - Extra pierce (e.g. from a charge attack)
 - Damage multiplier (e.g. from kill radius on a grenade)

@@ -1,7 +1,5 @@
 const parser = new DOMParser();
 
-const TRAITS_ADD_PIERCE_AGAINST_SHIELDS = ['Penetrating', 'Spread', 'Cauterize', 'Kinetic', 'Blast and Kill Radius', 'Carpet']
-
 const hitLocationMap = {
     'Head': 'head',
     'Right Arm': 'rightArm',
@@ -11,7 +9,21 @@ const hitLocationMap = {
     'Left Leg': 'leftLeg'
 }
 
-const getSelectedToken = () => canvas.tokens.controlled[0]
+// Should be a string format like '1d10' or '1d6 + 2', etc.
+const rollDice = (dice) => {
+    const roll = new Roll(dice).evaluate({ async: false})
+    return roll.total
+}
+
+const getSelectedToken = () => {
+    const selectedTokens = canvas.tokens.controlled
+
+    if (selectedTokens.length > 1) {
+        console.warn('More than one token selected, the first one selected will be used. If you get unexpected results please only select one token.')
+    }
+
+    return selectedTokens[0]
+}
 
 const getCharacter = () => {
     const user = game.user
@@ -94,19 +106,47 @@ const extractDataForHits = (htmlString) => {
 }
 
 const handleWeaponSpecialRules = (weaponSpecialRules) => {
-    // If the weapon has certain special rules, when damaging shields it adds the weapon's pierce to the damage
-    const weaponAddsPierceAgainstShields = weaponSpecialRules.some(trait => TRAITS_ADD_PIERCE_AGAINST_SHIELDS.includes(trait))
-    const weaponHasHeadshotSpecialRule = weaponSpecialRules.includes('Headshot')
+    // If the weapon has any of these special rules, when damaging energy shields it adds the weapon's pierce to the damage
+    const specialRuleAddPierceAgainstShield = ['Penetrating', 'Spread', 'Cauterize', 'Kinetic', 'Blast', 'Kill', 'Carpet']
+
+    const addsPierceAgainstEnergyShields = weaponSpecialRules.some(trait => specialRuleAddPierceAgainstShield.includes(trait))
+
+    /*
+        The headshot special rule means that the character does not add their toughness modifier to their resistance.
+    */
+    const headshot = weaponSpecialRules.includes('Headshot')
+
+    /*
+        The kinetic special rule does a couple of things:
+        - Deals damage against the character without pierce if they have energy shields.
+        - If the character does not have energy shields, the attack adds 1D10 damage.
+    */
+    const kinetic = weaponSpecialRules.includes('Kinetic')
+
+    /*
+        The penetrating special rule does a couple of things:
+            - Deals pierce * 3 damage against energy shields or pierce * 5 if the weapon also has 'Blast' or 'Kill' special rules.
+            - Deals damage * 2 and pierce * 2 against cover points and physical shields.
+        This extra damage does not carry through to wounds.
+    */
+    const penetrating = weaponSpecialRules.includes('Penetrating')
+
+    const blast = weaponSpecialRules.includes('Blast')
+    const kill = weaponSpecialRules.includes('Kill')
 
     return {
-        weaponAddsPierceAgainstShields,
-        weaponHasHeadshotSpecialRule
+        addsPierceAgainstEnergyShields,
+        headshot,
+        kinetic,
+        penetrating,
+        blast,
+        kill
     }
 }
 
-const calculateDamage = ({ damage, pierce, location, resistance, weaponTraits, coverLocations, coverPoints, shields }) => {
+const calculateDamage = ({ damage, pierce, location, resistance, weaponSpecialRules, coverLocations, coverPoints, energyShields }) => {
     const mappedHitLocation = hitLocationMap[location]
-    const applyHeadshot = location === 'Head' && weaponTraits.weaponHasHeadshotSpecialRule
+    const applyHeadshot = location === 'Head' && weaponSpecialRules.headshot
     const isHitLocationInCover = coverLocations[mappedHitLocation]
 
     // When a weapon has the headshot special rule, it ignores the toughness modifier when calculating resistance
@@ -117,19 +157,33 @@ const calculateDamage = ({ damage, pierce, location, resistance, weaponTraits, c
         resistanceAtHitLocation += coverPoints
     }
 
-    // If the target has shields then the damage should be applied to the shields first
-    if (shields > 0) {
-        const { shieldDamage, armourDamage } = calculateShieldDamage({ damage, pierce, weaponTraits, shields, isHitLocationInCover, coverPoints })
+    // If the target has energy shields then the damage should be applied to the shields first
+    if (energyShields > 0) {
+        const { shieldDamage, armourDamage } = calculateEnergyShieldDamage({
+            damage,
+            pierce,
+            weaponSpecialRules,
+            energyShields,
+            isHitLocationInCover,
+            coverPoints
+        })
+
+        let damageToArmour = armourDamage
+
+        // Kinetic weapons also deal damage to the armour through energy shields
+        if (weaponSpecialRules.kinetic) {
+            damageToArmour += damage
+        }
 
         // If no damage got through to the target's armour, we don't need to do anything else
-        if (armourDamage <= 0) {
+        if (damageToArmour <= 0) {
             return { shieldDamage, woundDamage: 0 }
         }
 
-        // If the shield is depleted, the remaining damage goes through to the target's armour, the normal resistances apply but pierce does not apply since it was already applied to the shield damage
-        const damageThroughResistance = (resistanceAtHitLocation > armourDamage)
+        // Any damage through to armour after damaging energy shields does not benefit from pierce so it isn't applied here
+        const damageThroughResistance = (resistanceAtHitLocation > damageToArmour)
             ? 0
-            : armourDamage - resistanceAtHitLocation
+            : damageToArmour - resistanceAtHitLocation
 
         return { shieldDamage, woundDamage: damageThroughResistance }
     }
@@ -139,45 +193,69 @@ const calculateDamage = ({ damage, pierce, location, resistance, weaponTraits, c
         ? 0
         : (resistanceAtHitLocation - pierce)
 
-    const damageThroughResistance = damage - effectiveResistance
+    let damageBeforeResistance = damage
+
+    // Kinetic weapons deal additional damage against unshielded targets
+    if (weaponSpecialRules.kinetic) {
+        const extraKineticDamage = rollDice('1d10')
+        damageBeforeResistance += extraKineticDamage
+    }
+
+    const damageThroughResistance = damageBeforeResistance - effectiveResistance
 
     return { shieldDamage: 0, woundDamage: damageThroughResistance }
 }
 
-const calculateShieldDamage = ({ damage, pierce, weaponTraits, shields, isHitLocationInCover, coverPoints }) => {
-    const damageToShields = weaponTraits.weaponAddsPierceAgainstShields
-        ? damage + pierce
-        : damage
+const calculateEnergyShieldDamage = ({ damage, pierce, weaponSpecialRules, energyShields, isHitLocationInCover, coverPoints }) => {
+    let damageToShields = damage
+    let pierceDamageToShields = 0
 
-    // Cover still applies when damaging shields, so we need to reduce the damage by the coverPoints value if the target is in cover
-    const effectiveDamage = isHitLocationInCover ? damageToShields - coverPoints : damageToShields
+    if (weaponSpecialRules.addsPierceAgainstEnergyShields) {
+        pierceDamageToShields += pierce
+    }
 
-    // If the shield health is greater than the damage, then the shields absorb all the damage and we don't need to do anything else
-    if (shields > effectiveDamage) {
+    // Penetrating weapons do their pierce * 3 or 5 damage against energy shields
+    if (weaponSpecialRules.penetrating) {
+        if (weaponSpecialRules.blast || weaponSpecialRules.kill) {
+            pierceDamageToShields = pierce * 5
+        } else {
+            pierceDamageToShields = pierce * 3
+        }
+    }
+
+    damageToShields += pierceDamageToShields
+
+    // Cover still applies when damaging energy shields, so we need to reduce the damage by the coverPoints value if the target is in cover
+    const effectiveDamage = isHitLocationInCover
+        ? damageToShields - coverPoints
+        : damageToShields
+
+    // If the shield health is greater than the damage, then the energy shields absorb all the damage and we don't need to do anything else
+    if (energyShields > effectiveDamage) {
         return { shieldDamage: effectiveDamage, armourDamage: 0 }
     }
 
-    // If shields would be depleted, the remaining damage goes through to the target's armour
-    let damageThroughToArmour = effectiveDamage - shields
+    // If energy shields would be depleted, the remaining damage goes through to the target's armour
+    let damageThroughToArmour = effectiveDamage - energyShields
 
-    // If pierce was added to the damage against shields, it no longer applies when damage spills through to the target's armour
-    // Pierce is also applied first to the shields, before any of the base damage
-    if (weaponTraits.weaponAddsPierceAgainstShields) {
-        const remainingPierce = pierce - shields
+    // If pierce was added to the damage against energy shields, it no longer applies when damage spills through to the target's armour
+    // Pierce is also applied first to the energy shields, before any of the base damage
+    if (weaponSpecialRules.addsPierceAgainstEnergyShields) {
+        const remainingPierce = pierceDamageToShields - energyShields
 
         if (remainingPierce > 0) {
             damageThroughToArmour -= remainingPierce
         }
     }
 
-    return { shieldDamage: shields, armourDamage: damageThroughToArmour }
+    return { shieldDamage: energyShields, armourDamage: damageThroughToArmour }
 }
 
-const generateChatMessage = ({ characterName, remainingShields, remainingWounds, totalDamage, hasShields }) => {
+const generateChatMessage = ({ characterName, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields }) => {
     // Target took no damage
     if (totalDamage <= 0) {
         if (hasShields) {
-            return `${characterName} took no damage. They still have ${remainingShields} shields and ${remainingWounds} wounds.`
+            return `${characterName} took no damage. They still have ${remainingShields} energy shields and ${remainingWounds} wounds.`
         } else {
             return `${characterName} took no damage. They still have ${remainingWounds} wounds.`
         }
@@ -186,15 +264,15 @@ const generateChatMessage = ({ characterName, remainingShields, remainingWounds,
     // Target has been downed
     if (remainingWounds <= 0) {
         if (hasShields) {
-            return `${characterName} is down! They took ${totalDamage} damage. They have ${remainingShields} shields and ${remainingWounds} wounds.`
+            return `${characterName} is down! They took ${shieldDamage} shield damage and ${woundDamage} wound damage. They have ${remainingShields} energy shields and ${remainingWounds} wounds.`
         } else {
-            return `${characterName} is down! They took ${totalDamage} damage. They have ${remainingWounds} wounds.`
+            return `${characterName} is down! They took ${shieldDamage} shield damage and ${woundDamage} wound damage. They have ${remainingWounds} wounds.`
         }
     }
 
     // Target took some damage
     if (hasShields) {
-        return `${characterName} took ${totalDamage} damage. They have ${remainingShields} shields and ${remainingWounds} wounds remaining.`
+        return `${characterName} took ${shieldDamage} shield damage and ${woundDamage} wound damage. They have ${remainingShields} energy shields and ${remainingWounds} wounds remaining.`
     } else {
         return `${characterName} took ${totalDamage} damage. They have ${remainingWounds} wounds remaining.`
     }
@@ -401,9 +479,11 @@ new Dialog({
             const lastAttackHtml = parser.parseFromString(lastAttackMessage.content, 'text/html');
 
             // Get weapon traits from weapon used in the attack
-            const weaponSpecialRules = Array.from(lastAttackHtml.querySelectorAll('aside.special .special-rule'))
-                .map(span => span.textContent.trim());
-            const weaponTraits = handleWeaponSpecialRules(weaponSpecialRules)
+            const specialRules = Array
+                .from(lastAttackHtml.querySelectorAll('aside.special .special-rule'))
+                .map(span => span.textContent.trim().replace(/\s*\(\d+\)/, ''));
+
+            const weaponSpecialRules = handleWeaponSpecialRules(specialRules)
 
             const hitResult = hitData.reduce((acc, curr) => {
                 const { hitNumber, damageInstances } = curr
@@ -428,30 +508,48 @@ new Dialog({
                         pierce: totalPierce,
                         location,
                         resistance,
-                        weaponTraits,
+                        weaponSpecialRules,
                         coverLocations,
                         coverPoints,
-                        shields: acc.remainingShields
+                        energyShields: acc.remainingShields
                     })
 
                     acc.totalDamage += shieldDamage
                     acc.totalDamage += woundDamage
+                    acc.woundDamage += woundDamage
+                    acc.shieldDamage += shieldDamage
                     acc.remainingShields -= shieldDamage
                     acc.remainingWounds -= woundDamage
 
                     return acc
-                }, { totalDamage: 0, remainingWounds: acc.remainingWounds, remainingShields: acc.remainingShields })
+                }, { totalDamage: 0, shieldDamage: 0, woundDamage: 0, remainingWounds: acc.remainingWounds, remainingShields: acc.remainingShields })
 
                 acc.totalDamage += damageResults.totalDamage
+                acc.shieldDamage += damageResults.shieldDamage
+                acc.woundDamage += damageResults.woundDamage
                 acc.remainingWounds = damageResults.remainingWounds
                 acc.remainingShields = damageResults.remainingShields
 
                 return acc
-            }, { totalDamage: 0, remainingWounds: currentWounds, remainingShields: currentShields })
+            }, { totalDamage: 0, shieldDamage: 0, woundDamage: 0, remainingWounds: currentWounds, remainingShields: currentShields })
 
-            const { totalDamage, remainingWounds, remainingShields } = hitResult
+            const {
+                totalDamage,
+                shieldDamage,
+                woundDamage,
+                remainingWounds,
+                remainingShields
+            } = hitResult
 
-            const chatMessage = generateChatMessage({ characterName: characterName, remainingShields, remainingWounds, totalDamage, hasShields })
+            const chatMessage = generateChatMessage({
+                characterName: characterName,
+                remainingShields,
+                remainingWounds,
+                totalDamage,
+                shieldDamage,
+                woundDamage,
+                hasShields
+            })
 
             applyDamage({ remainingWounds, remainingShields })
 
