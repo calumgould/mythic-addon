@@ -25,27 +25,28 @@ const getSelectedToken = () => {
     return selectedTokens[0]
 }
 
-const getCharacter = () => {
-    const user = game.user
-
-    // If there's an active selected token then use that as the character, if not use the user's character
+const getTarget = () => {
     const selectedToken = getSelectedToken()
 
+    // If user selected a token, use that token's data
     if (selectedToken) {
-        const tokenActorId = selectedToken.document.actorId
-        const selectedCharacter = game.actors.find((actor) => actor._id === tokenActorId)
-
-        return selectedCharacter
+        return { token: selectedToken, actor: selectedToken.actor }
     }
 
-    if (!user.character) {
-        console.error('No character found for user')
+    // If no token is selected, try and fallback to the user's character
+    if (!game.user.character) {
+        console.error('No target found. Please select a token.')
     }
 
-    return user.character
+    const actor = game.user.character
+    const tokens = actor.getActiveTokens()
+
+    if (tokens.length > 1) {
+        console.warn('More than one active token found for character, the first one will be used. If you get unexpected results please select a specific token instead.')
+    }
+
+    return { actor, token: tokens[0] }
 }
-
-const isNamedCharacter = (character) => character.type === 'Named Character'
 
 const getLastAttackFromChat = () => {
     // Find last attack in chat messages
@@ -113,14 +114,14 @@ const handleWeaponSpecialRules = (weaponSpecialRules) => {
     const addsPierceAgainstEnergyShields = weaponSpecialRules.some(trait => specialRuleAddPierceAgainstShield.includes(trait))
 
     /*
-        The headshot special rule means that the character does not add their toughness modifier to their resistance.
+        The headshot special rule means that the target does not add their toughness modifier to their resistance.
     */
     const headshot = weaponSpecialRules.includes('Headshot')
 
     /*
         The kinetic special rule does a couple of things:
-        - Deals damage against the character without pierce if they have energy shields.
-        - If the character does not have energy shields, the attack adds 1D10 damage.
+        - Deals damage against the target without pierce if they have energy shields.
+        - If the target does not have energy shields, the attack adds 1D10 damage.
     */
     const kinetic = weaponSpecialRules.includes('Kinetic')
 
@@ -265,49 +266,38 @@ const calculateEnergyShieldDamage = ({ damage, pierce, weaponSpecialRules, energ
     return { shieldDamage: energyShields, armourDamage: damageThroughToArmour }
 }
 
-const generateChatMessage = ({ characterName, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields }) => {
+const generateChatMessage = ({ actorName, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields }) => {
     // Target took no damage
     if (totalDamage <= 0) {
         if (hasShields) {
-            return `${characterName} took no damage. They still have ${remainingShields} energy shields and ${remainingWounds} wounds.`
+            return `${actorName} took no damage. They still have ${remainingShields} energy shields and ${remainingWounds} wounds.`
         } else {
-            return `${characterName} took no damage. They still have ${remainingWounds} wounds.`
+            return `${actorName} took no damage. They still have ${remainingWounds} wounds.`
         }
     }
 
     // Target has been downed
     if (remainingWounds <= 0) {
         if (hasShields) {
-            return `${characterName} is down! They took ${shieldDamage} shield damage and ${woundDamage} wound damage. They have ${remainingShields} energy shields and ${remainingWounds} wounds.`
+            return `${actorName} is down! They took ${shieldDamage} shield damage and ${woundDamage} wound damage. They have ${remainingShields} energy shields and ${remainingWounds} wounds.`
         } else {
-            return `${characterName} is down! They took ${shieldDamage} shield damage and ${woundDamage} wound damage. They have ${remainingWounds} wounds.`
+            return `${actorName} is down! They took ${woundDamage} damage. They have ${remainingWounds} wounds.`
         }
     }
 
     // Target took some damage
     if (hasShields) {
-        return `${characterName} took ${shieldDamage} shield damage and ${woundDamage} wound damage. They have ${remainingShields} energy shields and ${remainingWounds} wounds remaining.`
+        return `${actorName} took ${shieldDamage} shield damage and ${woundDamage} wound damage. They have ${remainingShields} energy shields and ${remainingWounds} wounds remaining.`
     } else {
-        return `${characterName} took ${totalDamage} damage. They have ${remainingWounds} wounds remaining.`
+        return `${actorName} took ${totalDamage} damage. They have ${remainingWounds} wounds remaining.`
     }
 }
 
-const applyDamage = ({ remainingWounds, remainingShields }) => {
-    const character = getCharacter()
-
-    if (isNamedCharacter(character)) {
-        character.update({
-            "system.wounds.value": remainingWounds,
-            "system.shields.value": remainingShields
-        })
-    } else {
-        // If it's a minion, just update the wounds of the token since multiple minions can have the same character sheet
-        const selectedToken = getSelectedToken()
-        selectedToken.actor.update({
-            "system.wounds.value": remainingWounds,
-            "system.shields.value": remainingShields
-        })
-    }
+const applyDamage = ({ target, remainingWounds, remainingShields }) => {
+    target.update({
+        "system.wounds.value": remainingWounds,
+        "system.shields.value": remainingShields
+    })
 }
 
 // Html for the dialog
@@ -435,23 +425,20 @@ new Dialog({
         icon: "<i class='fas fa-check'></i>",
         label: "Calculate",
         callback: (html) => {
-            const character = getCharacter()
+            const { actor, token } = getTarget()
 
-            if (!character) {
-                console.error('No character selected or found for user.')
+            if (!actor || !token) {
+                console.error('No token or actor found for target.')
                 return
             }
 
-            const isNamedCharacter = character.type === 'Named Character'
-            const selectedToken = getSelectedToken()
-            const callsign = character.name.match(/"([^"]+)"/)
-            const characterName = callsign ? callsign[1] : character.name
+            const callsign = actor.name.match(/"([^"]+)"/)
+            const actorName = callsign ? callsign[1] : actor.name
 
-            // If it's a minion, get data from the token since multiple minions can have the same character sheet
-            const resistance = isNamedCharacter ? character.system.armor : selectedToken.actor.system.armor
-            const currentWounds = isNamedCharacter ? character.system.wounds.value : selectedToken.actor.system.wounds.value
-            const hasShields = isNamedCharacter ? !!character.system.shields.max : !!selectedToken.actor.system.shields.max
-            const currentShields = isNamedCharacter ? character.system.shields.value : selectedToken.actor.system.shields.value
+            const resistance = actor.system.armor
+            const currentWounds = actor.system.wounds.value
+            const hasShields = !!actor.system.shields.max
+            const currentShields = actor.system.shields.value
 
             // Parse all the form data inputs
             // Options
@@ -556,7 +543,7 @@ new Dialog({
             } = hitResult
 
             const chatMessage = generateChatMessage({
-                characterName: characterName,
+                actorName: actorName,
                 remainingShields,
                 remainingWounds,
                 totalDamage,
@@ -565,7 +552,7 @@ new Dialog({
                 hasShields
             })
 
-            applyDamage({ remainingWounds, remainingShields })
+            applyDamage({ target: actor, remainingWounds, remainingShields })
 
             ChatMessage.create({
                 user: game.user._id,
