@@ -23,6 +23,15 @@ const rollDice = (dice) => {
     return roll.total
 }
 
+const calculateHitLocation = (hitRoll) => {
+    if (hitRoll >= 1 && hitRoll <= 10) return "Head";
+    if (hitRoll >= 11 && hitRoll <= 20) return "Left Arm";
+    if (hitRoll >= 21 && hitRoll <= 30) return "Right arm";
+    if (hitRoll >= 31 && hitRoll <= 45) return "Left Leg";
+    if (hitRoll >= 46 && hitRoll <= 60) return "Right Leg";
+    if (hitRoll >= 61 && hitRoll <= 100) return "Chest";
+}
+
 const getSelectedToken = () => {
     const selectedTokens = canvas.tokens.controlled
 
@@ -74,9 +83,12 @@ const extractDataForHits = (htmlString) => {
         // hitOutcome is a div that contains the number number
         const hitOutcome = hit.querySelector('.outcome')
 
+        const hitTags = hitOutcome.querySelectorAll('p')
         // the hitNumber is the first p tag in the outcome div
-        const hitTag = hitOutcome.querySelector('p')
-        const hitNumber = hitTag.textContent.trim() || '?'
+        const hitNumber = hitTags[0].textContent.trim() || '?'
+        // the hitNumber is the third p tag in the outcome div
+        const hitRollMatch = hitTags[2].textContent.trim().match((/^\d{1,3}/))
+        const hitRoll = hitRollMatch ? hitRollMatch[0] : 0
 
         // damageBlock is a div that contains the damage instances, pierce and location
         const damageBlock = hit.querySelector('.damage-block')
@@ -107,6 +119,7 @@ const extractDataForHits = (htmlString) => {
 
         return {
             hitNumber: parseInt(hitNumber, 10),
+            hitRoll: parseInt(hitRoll, 10),
             damageInstances
         }
     });
@@ -327,8 +340,6 @@ const handleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, resist
             // Handle any damage multipliers being applied from the form, e.g. from a grenade's kill radius
             const totalDamage = damage * damageMultiplier
 
-            console.log({ location })
-
             const { shieldDamage, woundDamage } = calculateDamage({
                 damage: totalDamage,
                 pierce: totalPierce,
@@ -391,8 +402,25 @@ const handleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, resist
     });
 }
 
-const handleVehicleHit = () => {
+const handleVehicleHit = ({ vehicle }) => {
+    const crew = vehicle.system.crew
 
+    const crewActorIds = [
+        ...crew.operators.map(operator => operator.id).filter(id => id !== null),
+        ...crew.gunners.map(gunner => gunner.id).filter(id => id !== null),
+        ...crew.complement.map(complement => complement.id).filter(id => id !== null)
+    ];
+
+    // Get actors for crew and determine if they get hit
+    const crewActors = crewActorIds.map((id) => {
+        const actor = game.actors.get(id)
+        const roll = rollDice('d100')
+        const hit = roll >= 96 // crew have 5% chance of being hit inside vehicle
+
+        return { actor, hit }
+    })
+
+    console.log({ crewActors })
 }
 
 // Html for the dialog
@@ -509,7 +537,7 @@ new Dialog({
             const { actor, token } = getTarget()
 
             if (!actor || !token) {
-                console.error('No token or actor found for target.')
+                console.error('No target found.')
                 return
             }
 
@@ -577,8 +605,9 @@ new Dialog({
 
             // If target is a vehicle we have to handle this differently
             if (actor.type === 'Vehicle') {
-                console.log('Vehicle hit', { actor })
                 // TODO handle vehicle
+                console.log('Vehicle hit', { actor })
+                handleVehicleHit({ vehicle: actor })
             } else {
                 const currentWounds = actor.system.wounds.value
 
@@ -590,6 +619,7 @@ new Dialog({
         label: 'Cancel'
       }
     },
+    // In some cases we need to dynamically inject some html into the dialog as it renders, this is because we need context of certain data points to know what to render
     render: (html) => {
         // Render cover options, this differs if the target is a vehicle or not
         const { actor } = getTarget()
