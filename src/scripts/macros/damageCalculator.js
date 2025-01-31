@@ -6,7 +6,15 @@ const hitLocationMap = {
     'Right Leg': 'rightLeg',
     'Chest': 'chest',
     'Left Arm': 'leftArm',
-    'Left Leg': 'leftLeg'
+    'Left Leg': 'leftLeg',
+}
+
+const vehicleHitLocationMap = {
+    'Engine': 'eng',
+    'Hull': 'hull',
+    'Mobility': 'mob',
+    'Optics': 'op',
+    'Weapon': 'wep'
 }
 
 // Should be a string format like '1d10' or '1d6 + 2', etc.
@@ -80,7 +88,7 @@ const extractDataForHits = (htmlString) => {
         const pierce = pierceMatch ? pierceMatch[1] : null;
 
         // Look through the element for location
-        const locationMatch = additions.match(/:\s([a-zA-Z\s-]+)\s-/);
+        const locationMatch = additions.match(/:\s*([\p{L}\s-]+?)(?=\s*-|\n|$)/u);
         const location = locationMatch ? locationMatch[1].trim() : null;
 
         const rollResults = damageBlock.querySelectorAll('.inline-roll.inline-result')
@@ -300,6 +308,93 @@ const applyDamage = ({ target, remainingWounds, remainingShields }) => {
     })
 }
 
+const handleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, resistance, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields }) => {
+    const hitResult = hitData.reduce((acc, curr) => {
+        const { hitNumber, damageInstances } = curr
+
+        if (!appliedHits[hitNumber]) {
+            // if hit wasn't checked we don't calculate damage, this could be because it was evaded for example
+            return acc
+        }
+
+        // Each hit can have multiple instances of damage, e.g burst fire so we need to loop over all of them
+        const damageResults = damageInstances.reduce((acc, curr) => {
+            const { damage, pierce, location } = curr
+
+            // Handle any extra pierce being applied form the form, e.g. from a charge
+            const totalPierce = pierce + extraPierce
+
+            // Handle any damage multipliers being applied from the form, e.g. from a grenade's kill radius
+            const totalDamage = damage * damageMultiplier
+
+            console.log({ location })
+
+            const { shieldDamage, woundDamage } = calculateDamage({
+                damage: totalDamage,
+                pierce: totalPierce,
+                location,
+                resistance,
+                weaponSpecialRules,
+                coverLocations,
+                coverPoints,
+                energyShields: acc.remainingShields
+            })
+
+            acc.totalDamage += shieldDamage
+            acc.totalDamage += woundDamage
+            acc.woundDamage += woundDamage
+            acc.shieldDamage += shieldDamage
+            acc.remainingShields -= shieldDamage
+            acc.remainingWounds -= woundDamage
+
+            return acc
+        }, { totalDamage: 0, shieldDamage: 0, woundDamage: 0, remainingWounds: acc.remainingWounds, remainingShields: acc.remainingShields })
+
+        acc.totalDamage += damageResults.totalDamage
+        acc.shieldDamage += damageResults.shieldDamage
+        acc.woundDamage += damageResults.woundDamage
+        acc.remainingWounds = damageResults.remainingWounds
+        acc.remainingShields = damageResults.remainingShields
+
+        return acc
+    }, { totalDamage: 0, shieldDamage: 0, woundDamage: 0, remainingWounds: currentWounds, remainingShields: currentShields })
+
+    const {
+        totalDamage,
+        shieldDamage,
+        woundDamage,
+        remainingWounds,
+        remainingShields
+    } = hitResult
+
+    const callsign = actor.name.match(/"([^"]+)"/)
+    const actorName = callsign ? callsign[1] : actor.name
+
+    const chatMessage = generateChatMessage({
+        actorName,
+        remainingShields,
+        remainingWounds,
+        totalDamage,
+        shieldDamage,
+        woundDamage,
+        hasShields
+    })
+
+    applyDamage({ target: actor, remainingWounds, remainingShields })
+
+    ChatMessage.create({
+        user: game.user._id,
+        speaker: ChatMessage.getSpeaker(),
+        content: chatMessage,
+        // If the user wants the result to be private, only they will see the message
+        whisper: whisperResult ? [game.user._id] : null
+    });
+}
+
+const handleVehicleHit = () => {
+
+}
+
 // Html for the dialog
 const dialogStyles = `
 <style>
@@ -315,7 +410,7 @@ const dialogStyles = `
         align-items: center;
         gap: 10px;
     }
-    .checkbox-group {
+    .cover-locations-container {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
@@ -324,9 +419,6 @@ const dialogStyles = `
         display: flex;
         align-items: center;
         gap: 5px;
-    }
-    .checkbox-label input[type="checkbox"] {
-        margin: 0;
     }
     .location-checkbox-label {
         width: calc(33.33% - 10px);
@@ -340,22 +432,11 @@ const dialogStyles = `
 </style>
 `;
 
-const hitLocationFormOptions = Object.entries(hitLocationMap).map(([key, value]) => ({ name: value, label: key }))
-
-const coverLocationOptions = hitLocationFormOptions
-    .map((location) => `
-        <label class="location-checkbox-label checkbox-label">
-            <input type="checkbox" name="coverLocation" value="${location.name}" />
-            ${location.label}
-        </label>
-    `)
-    .join("");
-
 const coverLocationsSection = `
         <fieldset class="form-section">
             <legend>Locations in Cover</legend>
-            <div class="checkbox-group">
-                ${coverLocationOptions}
+            <div class="cover-locations-container">
+                <!-- Dynamically generated checkboxes will render here -->
             </div>
         </fieldset>
 `
@@ -432,14 +513,6 @@ new Dialog({
                 return
             }
 
-            const callsign = actor.name.match(/"([^"]+)"/)
-            const actorName = callsign ? callsign[1] : actor.name
-
-            const resistance = actor.system.armor
-            const currentWounds = actor.system.wounds.value
-            const hasShields = !!actor.system.shields.max
-            const currentShields = actor.system.shields.value
-
             // Parse all the form data inputs
             // Options
             const whisperResult = html.find("input[name='whisperResult']").is(':checked')
@@ -477,6 +550,18 @@ new Dialog({
 
             // Extract data from the last attack
             const hitData = extractDataForHits(lastAttackMessage.content)
+
+            const isAttackAgainstVehicle = hitData.every(hit =>
+                hit.damageInstances.every(instance => instance.location in vehicleHitLocationMap)
+            );
+
+            // Make sure the target is a vehicle if the attack is against a vehicle
+            // Crew of the vehicle being hit will be handled automatically
+            if (isAttackAgainstVehicle && actor.type !== 'Vehicle') {
+                console.error('Vehicle hit detected but target is not a vehicle.')
+                return
+            }
+
             const lastAttackHtml = parser.parseFromString(lastAttackMessage.content, 'text/html');
 
             // Get weapon traits from weapon used in the attack
@@ -486,81 +571,19 @@ new Dialog({
 
             const weaponSpecialRules = handleWeaponSpecialRules(specialRules)
 
-            const hitResult = hitData.reduce((acc, curr) => {
-                const { hitNumber, damageInstances } = curr
+            const resistance = actor.system.armor
+            const hasShields = !!actor.system.shields.max
+            const currentShields = actor.system.shields.value
 
-                if (!appliedHits[hitNumber]) {
-                    // if hit wasn't checked we don't calculate damage, this could be because it was evaded for example
-                    return acc
-                }
+            // If target is a vehicle we have to handle this differently
+            if (actor.type === 'Vehicle') {
+                console.log('Vehicle hit', { actor })
+                // TODO handle vehicle
+            } else {
+                const currentWounds = actor.system.wounds.value
 
-                // Each hit can have multiple instances of damage, e.g burst fire so we need to loop over all of them
-                const damageResults = damageInstances.reduce((acc, curr) => {
-                    const { damage, pierce, location } = curr
-
-                    // Handle any extra pierce being applied form the form, e.g. from a charge
-                    const totalPierce = pierce + extraPierce
-
-                    // Handle any damage multipliers being applied from the form, e.g. from a grenade's kill radius
-                    const totalDamage = damage * damageMultiplier
-
-                    const { shieldDamage, woundDamage } = calculateDamage({
-                        damage: totalDamage,
-                        pierce: totalPierce,
-                        location,
-                        resistance,
-                        weaponSpecialRules,
-                        coverLocations,
-                        coverPoints,
-                        energyShields: acc.remainingShields
-                    })
-
-                    acc.totalDamage += shieldDamage
-                    acc.totalDamage += woundDamage
-                    acc.woundDamage += woundDamage
-                    acc.shieldDamage += shieldDamage
-                    acc.remainingShields -= shieldDamage
-                    acc.remainingWounds -= woundDamage
-
-                    return acc
-                }, { totalDamage: 0, shieldDamage: 0, woundDamage: 0, remainingWounds: acc.remainingWounds, remainingShields: acc.remainingShields })
-
-                acc.totalDamage += damageResults.totalDamage
-                acc.shieldDamage += damageResults.shieldDamage
-                acc.woundDamage += damageResults.woundDamage
-                acc.remainingWounds = damageResults.remainingWounds
-                acc.remainingShields = damageResults.remainingShields
-
-                return acc
-            }, { totalDamage: 0, shieldDamage: 0, woundDamage: 0, remainingWounds: currentWounds, remainingShields: currentShields })
-
-            const {
-                totalDamage,
-                shieldDamage,
-                woundDamage,
-                remainingWounds,
-                remainingShields
-            } = hitResult
-
-            const chatMessage = generateChatMessage({
-                actorName: actorName,
-                remainingShields,
-                remainingWounds,
-                totalDamage,
-                shieldDamage,
-                woundDamage,
-                hasShields
-            })
-
-            applyDamage({ target: actor, remainingWounds, remainingShields })
-
-            ChatMessage.create({
-                user: game.user._id,
-                speaker: ChatMessage.getSpeaker(),
-                content: chatMessage,
-                // If the user wants the result to be private, only they will see the message
-                whisper: whisperResult ? [game.user._id] : null
-            });
+                handleHit({ hitData, appliedHits, extraPierce, damageMultiplier, resistance, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields })
+            }
         }
       },
       cancel: {
@@ -568,8 +591,25 @@ new Dialog({
       }
     },
     render: (html) => {
-        const damageInstancesContainer = html.find('.damage-instances-container');
+        // Render cover options, this differs if the target is a vehicle or not
+        const { actor } = getTarget()
+        const coverLocationsContainer = html.find('.cover-locations-container');
+        const locations = actor.type === 'Vehicle' ? vehicleHitLocationMap : hitLocationMap
+        const hitLocationFormOptions = Object.entries(locations).map(([key, value]) => ({ name: value, label: key }))
 
+        hitLocationFormOptions.forEach((location) => {
+            const label = $(`
+                <label class="location-checkbox-label checkbox-label">
+                    <input type="checkbox" name="coverLocation" value="${location.name}" />
+                    ${location.label}
+                </label>`
+            );
+
+            coverLocationsContainer.append(label);
+        })
+
+        // Render hits from the last attack chat message
+        const damageInstancesContainer = html.find('.damage-instances-container');
         const lastAttackMessage = getLastAttackFromChat()
 
         if (!lastAttackMessage) {
