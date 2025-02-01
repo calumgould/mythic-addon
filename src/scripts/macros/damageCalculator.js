@@ -239,6 +239,11 @@ const calculateDamage = ({ damage, pierce, location, resistance, weaponSpecialRu
 
     const damageThroughResistance = damageBeforeResistance - effectiveResistance
 
+    // Make sure we don't apply negative damage which would give them wounds
+    if (damageThroughResistance <= 0) {
+        return { shieldDamage: 0, woundDamage: 0 }
+    }
+
     return { shieldDamage: 0, woundDamage: damageThroughResistance }
 }
 
