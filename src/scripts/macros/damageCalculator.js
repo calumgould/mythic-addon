@@ -352,32 +352,8 @@ const calculateEnergyShieldDamage = ({ damage, pierce, weaponSpecialRules, energ
     return { shieldDamage: energyShields, armourDamage: damageThroughToArmour }
 }
 
-const handleHitAftermath = ({ actor, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields, whisperResult }) => {
-    const callsign = actor.name.match(/"([^"]+)"/)
-    const actorName = callsign ? callsign[1] : actor.name
-
-    const chatMessage = generateChatMessage({
-        actorName,
-        remainingShields,
-        remainingWounds,
-        totalDamage,
-        shieldDamage,
-        woundDamage,
-        hasShields
-    })
-
-    applyDamage({ target: actor, remainingWounds, remainingShields })
-
-    ChatMessage.create({
-        user: game.user._id,
-        speaker: ChatMessage.getSpeaker(),
-        content: chatMessage,
-        // If the user wants the result to be private, only they will see the message
-        whisper: whisperResult ? [game.user._id] : null
-    });
-}
-
-const generateChatMessage = ({ actorName, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields }) => {
+/* Person Logic */
+const generatePersonHitChatMessage = ({ actorName, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields }) => {
     // Target took no damage
     if (totalDamage <= 0) {
         if (hasShields) {
@@ -404,14 +380,39 @@ const generateChatMessage = ({ actorName, remainingShields, remainingWounds, tot
     }
 }
 
-const applyDamage = ({ target, remainingWounds, remainingShields }) => {
-    target.update({
+const applyPersonHit = async ({ actor, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields, whisperResult }) => {
+    const callsign = actor.name.match(/"([^"]+)"/)
+    const actorName = callsign ? callsign[1] : actor.name
+
+    const chatMessage = generatePersonHitChatMessage({
+        actorName,
+        remainingShields,
+        remainingWounds,
+        totalDamage,
+        shieldDamage,
+        woundDamage,
+        hasShields
+    })
+
+    await applyPersonDamage({ actor, remainingWounds, remainingShields })
+
+    ChatMessage.create({
+        user: game.user._id,
+        speaker: ChatMessage.getSpeaker(),
+        content: chatMessage,
+        // If the user wants the result to be private, only they will see the message
+        whisper: whisperResult ? [game.user._id] : null
+    });
+}
+
+const applyPersonDamage = async ({ actor, remainingWounds, remainingShields }) => {
+    await actor.update({
         "system.wounds.value": remainingWounds,
         "system.shields.value": remainingShields
     })
 }
 
-const handleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields }) => {
+const handlePersonHit = async ({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields }) => {
     const hitResult = hitData.reduce((acc, curr) => {
         const { hitNumber, damageInstances } = curr
 
@@ -468,10 +469,56 @@ const handleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, armour
         remainingShields
     } = hitResult
 
-    handleHitAftermath({ actor, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields, whisperResult })
+    await applyPersonHit({ actor, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields, whisperResult })
 }
 
-const handleVehicleCrewHit = ({ actor, hitRoll, pierce, extraPierce, damage, damageMultiplier, vehicleHitLocation, weaponSpecialRules, coverLocations, coverPoints, whisperResult }) => {
+/* Vehicle Logic */
+const generateVehicleHitChatMessage = ({ actorName, remainingShields, currentBreakpoints, remainingBreakpoints, totalDamage, shieldDamage, hasShields }) => {
+    const damagedBreakpoints = Object.entries(remainingBreakpoints).reduce((acc, [key, value]) => {
+        if (value.value < currentBreakpoints[key].value) {
+            acc[key] = {
+                damageTaken: currentBreakpoints[key].value - value.value,
+                remainingHealth: value.value
+            }
+        }
+
+        return acc
+    }, {})
+
+    // TODO chat message for vehicle damage, breakpoints, etc
+    return 'WIP - check vehicle stats instead'
+}
+
+const applyVehicleDamage = async ({ actor, remainingShields, remainingBreakpoints }) => {
+    Object.entries(remainingBreakpoints).map(async ([key, value]) => {
+        await actor.update({
+            [`system.breakpoints.${key}.value`]: value.value
+        })
+    })
+
+    await actor.update({
+        "system.shields.value": remainingShields,
+    })
+}
+
+const applyVehicleHit = async ({ actor, currentShields, remainingShields, currentBreakpoints, remainingBreakpoints, totalDamage, shieldDamage, hasShields, whisperResult }) => {
+    const callsign = actor.name.match(/"([^"]+)"/)
+    const actorName = callsign ? callsign[1] : actor.name
+
+    const chatMessage = generateVehicleHitChatMessage({ actorName, remainingShields, currentBreakpoints, remainingBreakpoints, totalDamage, shieldDamage, hasShields })
+
+    // await applyVehicleDamage({ actor, remainingShields, remainingBreakpoints })
+
+    ChatMessage.create({
+        user: game.user._id,
+        speaker: ChatMessage.getSpeaker(),
+        content: chatMessage,
+        // If the user wants the result to be private, only they will see the message
+        whisper: whisperResult ? [game.user._id] : null
+    });
+}
+
+const handleVehicleCrewHit = async ({ actor, hitRoll, pierce, extraPierce, damage, damageMultiplier, vehicleHitLocation, weaponSpecialRules, coverLocations, coverPoints, whisperResult }) => {
     const crew = actor.system.crew
     const isOpenTop = actor.system.special.openTop.has
 
@@ -486,20 +533,20 @@ const handleVehicleCrewHit = ({ actor, hitRoll, pierce, extraPierce, damage, dam
     const crewActors = crewActorIds.map((id) => canvas.tokens.placeables.find((token) => token.actor._id === id)?.actor).filter((actor) => actor)
 
     if (crewActors.length) {
-        const crewActorsHit = crewActors.filter(() => rollDice('d100') >= 1)
+        // 5% chance to hit a crew member if damage has penetrated the hull
+        const crewActorsHit = crewActors.filter(() => rollDice('d100') >= 1) // TODO put back to 96
 
         if (crewActorsHit.length) {
             // Calculate hit location for crew member based on the hit roll
             const crewHitLocation = calculateHitLocation(hitRoll)
 
-            crewActorsHit.forEach((crewActor) => {
+            // Refactor the loop to be async
+            for (let crewActor of crewActorsHit) {
                 const totalPierce = pierce + extraPierce
                 const totalDamage = damage * damageMultiplier
                 const crewMemberHasShields = !!crewActor.system.shields.max
                 const crewMemberCurrentWounds = crewActor.system.wounds.value
                 const crewMemberCurrentShields = crewActor.system.shields.value
-
-                console.log('Crew Hit (Canvas)', { actor: crewActor, shields: crewActor.system.shields.value, wounds: crewActor.system.wounds.value })
 
                 let crewArmour = crewActor.system.armor
                 const vehicleArmourValue = actor.system.armor[vehicleHitLocation].value
@@ -526,11 +573,9 @@ const handleVehicleCrewHit = ({ actor, hitRoll, pierce, extraPierce, damage, dam
                     coverLocations,
                     coverPoints,
                     energyShields: crewMemberCurrentShields
-                })
+                });
 
-                console.log('Crew Damage Result', { actor: crewActor, hitLocation: crewHitLocation, shieldDamage, woundDamage })
-
-                handleHitAftermath({
+                await applyPersonHit({
                     actor: crewActor,
                     remainingShields: crewMemberCurrentShields - shieldDamage,
                     remainingWounds: crewMemberCurrentWounds - woundDamage,
@@ -539,39 +584,48 @@ const handleVehicleCrewHit = ({ actor, hitRoll, pierce, extraPierce, damage, dam
                     woundDamage,
                     hasShields: crewMemberHasShields,
                     whisperResult
-                })
-            })
+                });
+            }
         }
     }
 }
 
-const handleVehicleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentBreakpoints, currentShields, actor, whisperResult, hasShields, vehicleHitLocation }) => {
-    const hitResult = hitData.reduce((acc, curr) => {
-        const { hitNumber, hitRoll, damageInstances } = curr
+const handleVehicleHit = async ({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentBreakpoints, currentShields, actor, whisperResult, hasShields, vehicleHitLocation }) => {
+    // Initialize accumulator values
+    let totalDamage = 0;
+    let shieldDamage = 0;
+    let vehicleDamage = 0;
+    let remainingBreakpoints = structuredClone(currentBreakpoints);
+    let remainingShields = currentShields;
 
+    for (let hit of hitData) {
+        const { hitNumber, hitRoll, damageInstances } = hit;
+
+        // If hit wasn't applied we don't need to do anything for this hit
         if (!appliedHits[hitNumber]) {
-            // if hit wasn't checked we don't calculate damage, this could be because it was evaded for example
-            return acc
+            continue;
         }
 
-        // Each hit can have multiple instances of damage, e.g burst fire so we need to loop over all of them
-        const damageResults = damageInstances.reduce((damageAcc, damageCurr) => {
-            const { damage, pierce, location } = damageCurr
+        // Initialize damage accumulator for the current hit
+        let damageResult = { totalDamage: 0, shieldDamage: 0, vehicleDamage: 0, remainingBreakpoints: { ...remainingBreakpoints }, remainingShields };
 
-            let breakpointHitLocation = location
+        for (let damageInstance of damageInstances) {
+            const { damage, pierce, location } = damageInstance;
+
+            let breakpointHitLocation = location;
 
             // TODO handle armour being halved when vehicle hull reaches 0
             // TODO handle damage taken when hull is 0
             // If targeting a breakpoint that is already destroyed, the damage is applied to the hull instead
-            if (damageAcc.breakpoints[vehicleBreakpointMap[breakpointHitLocation]].value <= 0) {
-                breakpointHitLocation = 'Hull'
+            if (damageResult.remainingBreakpoints[vehicleBreakpointMap[breakpointHitLocation]].value <= 0) {
+                breakpointHitLocation = 'Hull';
             }
 
             // Handle any extra pierce being applied from the form, e.g. from a charge
-            const totalPierce = pierce + extraPierce
+            const totalPierce = pierce + extraPierce;
 
             // Handle any damage multipliers being applied from the form, e.g. from a grenade's kill radius
-            const totalDamage = damage * damageMultiplier
+            const totalDamage = damage * damageMultiplier;
 
             const { shieldDamage, vehicleDamage } = calculateVehicleDamage({
                 damage: totalDamage,
@@ -581,65 +635,56 @@ const handleVehicleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier,
                 weaponSpecialRules,
                 coverLocations,
                 coverPoints,
-                energyShields: damageAcc.remainingShields
-            })
+                energyShields: damageResult.remainingShields
+            });
 
             // If hitting hull and damage has penetrated the hull, there is a 5% chance to hit a crew member
             if (breakpointHitLocation === 'Hull' && vehicleDamage >= 0) {
-                handleVehicleCrewHit({ actor, hitRoll, pierce, extraPierce, damage, damageMultiplier, vehicleHitLocation, weaponSpecialRules, coverLocations, coverPoints, whisperResult })
+                await handleVehicleCrewHit({ actor, hitRoll, pierce, extraPierce, damage, damageMultiplier, vehicleHitLocation, weaponSpecialRules, coverLocations, coverPoints, whisperResult });
             }
 
-            console.log('Vehicle Damage Result', { shieldDamage, vehicleDamage, vehicleHitLocation })
+            const mappedBreakpointHitLocation = vehicleBreakpointMap[breakpointHitLocation];
 
-            const mappedBreakpointHitLocation = vehicleBreakpointMap[breakpointHitLocation]
-
-            damageAcc.totalDamage += shieldDamage
-            damageAcc.totalDamage += vehicleDamage
-            damageAcc.vehicleDamage += vehicleDamage
-            damageAcc.shieldDamage += shieldDamage
-            damageAcc.remainingShields -= shieldDamage
-            damageAcc.breakpoints = {
-                ...damageAcc.breakpoints,
+            // Accumulate results into the damageResult
+            damageResult.totalDamage += shieldDamage;
+            damageResult.totalDamage += vehicleDamage;
+            damageResult.vehicleDamage += vehicleDamage;
+            damageResult.shieldDamage += shieldDamage;
+            damageResult.remainingShields -= shieldDamage;
+            damageResult.remainingBreakpoints = {
+                ...damageResult.remainingBreakpoints,
                 [mappedBreakpointHitLocation]: {
-                    ...damageAcc.breakpoints[mappedBreakpointHitLocation],
-                    value: damageAcc.breakpoints[mappedBreakpointHitLocation].value - vehicleDamage
+                    ...damageResult.remainingBreakpoints[mappedBreakpointHitLocation],
+                    value: damageResult.remainingBreakpoints[mappedBreakpointHitLocation].value - vehicleDamage
                 }
-            }
+            };
+        }
 
-            return damageAcc
-        }, { totalDamage: 0, shieldDamage: 0, vehicleDamage: 0, breakpoints: {...acc.breakpoints }, remainingShields: acc.remainingShields })
-
-        acc.totalDamage += damageResults.totalDamage
-        acc.shieldDamage += damageResults.shieldDamage
-        acc.vehicleDamage += damageResults.vehicleDamage
-        acc.remainingShields = damageResults.remainingShields
-
-        acc.breakpoints = Object.entries(damageResults.breakpoints).reduce((breakpoints, [key, value]) => ({
+        // After processing all damage instances, add the results to the overall accumulator
+        totalDamage += damageResult.totalDamage;
+        shieldDamage += damageResult.shieldDamage;
+        vehicleDamage += damageResult.vehicleDamage;
+        remainingShields = damageResult.remainingShields;
+        remainingBreakpoints = Object.entries(damageResult.remainingBreakpoints).reduce((breakpoints, [key, value]) => ({
             ...breakpoints,
             [key]: {
                 ...breakpoints[key],
                 value: value.value
             }
-        }), acc.breakpoints)
+        }), remainingBreakpoints);
+    }
 
-        return acc
-    }, { totalDamage: 0, shieldDamage: 0, vehicleDamage: 0, breakpoints: structuredClone(currentBreakpoints), remainingShields: currentShields })
-
-    const {
+    await applyVehicleHit({
+        actor,
+        currentShields,
+        remainingShields,
+        currentBreakpoints,
+        remainingBreakpoints,
         totalDamage,
         shieldDamage,
-        vehicleDamage,
-        breakpoints,
-        remainingShields
-    } = hitResult
-
-    const callsign = actor.name.match(/"([^"]+)"/)
-    const actorName = callsign ? callsign[1] : actor.name
-
-    // TODO chatMessage
-
-    // TODO applyDamage
-    // applyDamage({ target: actor, remainingWounds, remainingShields })
+        hasShields,
+        whisperResult
+    })
 }
 
 // Html for the dialog
@@ -757,7 +802,7 @@ new Dialog({
       confirm: {
         icon: "<i class='fas fa-check'></i>",
         label: "Calculate",
-        callback: (html) => {
+        callback: async (html) => {
             const { actor, token } = getTarget()
 
             if (!actor || !token) {
@@ -840,11 +885,11 @@ new Dialog({
 
                 const currentBreakpoints = actor.system.breakpoints
 
-                handleVehicleHit({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentBreakpoints, currentShields, actor, whisperResult, hasShields, vehicleHitLocation })
+                await handleVehicleHit({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentBreakpoints, currentShields, actor, whisperResult, hasShields, vehicleHitLocation })
             } else {
                 const currentWounds = actor.system.wounds.value
 
-                handleHit({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields })
+                await handlePersonHit({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields })
             }
         }
       },
