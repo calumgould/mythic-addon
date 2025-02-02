@@ -9,7 +9,7 @@ const hitLocationMap = {
     'Left Leg': 'leftLeg',
 }
 
-const vehicleHitLocationMap = {
+const vehicleBreakpointMap = {
     'Engine': 'eng',
     'Hull': 'hull',
     'Mobility': 'mob',
@@ -53,9 +53,11 @@ const getTarget = () => {
     // If no token is selected, try and fallback to the user's character
     if (!game.user.character) {
         console.error('No target found. Please select a token.')
+        return { actor: null, token: null }
     }
 
     const actor = game.user.character
+
     const tokens = actor.getActiveTokens()
 
     if (tokens.length > 1) {
@@ -167,22 +169,22 @@ const handleWeaponSpecialRules = (weaponSpecialRules) => {
     }
 }
 
-const calculateDamage = ({ damage, pierce, location, resistance, weaponSpecialRules, coverLocations, coverPoints, energyShields }) => {
+const calculatePersonDamage = ({ damage, pierce, location, armour, weaponSpecialRules, coverLocations, coverPoints, energyShields }) => {
     const mappedHitLocation = hitLocationMap[location]
     const applyHeadshot = location === 'Head' && weaponSpecialRules.headshot
     const isHitLocationInCover = coverLocations[mappedHitLocation]
 
-    let resistanceAtHitLocation = resistance[mappedHitLocation].resistance
+    let resistanceAtHitLocation = armour[mappedHitLocation].resistance
 
     // Protection is the armour without toughness modifier applied
     if (applyHeadshot) {
-        resistanceAtHitLocation = resistance[mappedHitLocation].protection
+        resistanceAtHitLocation = armour[mappedHitLocation].protection
     }
 
     // Blast weapons always hit the location with the lowest armour
     // Locations in cover should not be considered for the damage
     if (weaponSpecialRules.blast) {
-        const locationsNotInCover = Object.entries(resistance).filter(([location]) => !coverLocations[location])
+        const locationsNotInCover = Object.entries(armour).filter(([location]) => !coverLocations[location])
         const lowestResistanceNotInCover = Math.min(...Object.values(locationsNotInCover).map(([_, armour]) => armour.resistance));
 
         resistanceAtHitLocation = lowestResistanceNotInCover
@@ -247,6 +249,64 @@ const calculateDamage = ({ damage, pierce, location, resistance, weaponSpecialRu
     return { shieldDamage: 0, woundDamage: damageThroughResistance }
 }
 
+const calculateVehicleDamage = ({ damage, pierce, location, armour, weaponSpecialRules, coverLocations, coverPoints, energyShields }) => {
+    const isHitLocationInCover = coverLocations[location]
+
+    let armourAtHitLocation = armour[location].value
+
+    // TODO handle blast
+
+    // If location being hit is in cover, add the cover points to the overall armour
+    if (isHitLocationInCover) {
+        armourAtHitLocation += coverPoints
+    }
+
+    // If the target has energy shields then the damage should be applied to the shields first
+    if (energyShields > 0) {
+        const { shieldDamage, armourDamage } = calculateEnergyShieldDamage({
+            damage,
+            pierce,
+            weaponSpecialRules,
+            energyShields,
+            isHitLocationInCover,
+            coverPoints
+        })
+
+        let damageToArmour = armourDamage
+
+        // Kinetic weapons also deal damage to the armour through energy shields
+        if (weaponSpecialRules.kinetic) {
+            damageToArmour += damage
+        }
+
+        // If no damage got through to the target's armour, we don't need to do anything else
+        if (damageToArmour <= 0) {
+            return { shieldDamage, vehicleDamage: 0 }
+        }
+
+        // Any damage through to armour after damaging energy shields does not benefit from pierce so it isn't applied here
+        const damageThroughResistance = (armourAtHitLocation > damageToArmour)
+            ? 0
+            : damageToArmour - armourAtHitLocation
+
+        return { shieldDamage, vehicleDamage: damageThroughResistance }
+    }
+
+    // If the pierce is greater than the armour, it shouldn't add any damage.
+    const effectiveResistance = pierce > armourAtHitLocation
+        ? 0
+        : (armourAtHitLocation - pierce)
+
+    const damageThroughResistance = damage - effectiveResistance
+
+    // Make sure we don't apply negative damage which would give them wounds
+    if (damageThroughResistance <= 0) {
+        return { shieldDamage: 0, vehicleDamage: 0 }
+    }
+
+    return { shieldDamage: 0, vehicleDamage: damageThroughResistance }
+}
+
 const calculateEnergyShieldDamage = ({ damage, pierce, weaponSpecialRules, energyShields, isHitLocationInCover, coverPoints }) => {
     let damageToShields = damage
     let pierceDamageToShields = 0
@@ -292,6 +352,31 @@ const calculateEnergyShieldDamage = ({ damage, pierce, weaponSpecialRules, energ
     return { shieldDamage: energyShields, armourDamage: damageThroughToArmour }
 }
 
+const handleHitAftermath = ({ actor, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields, whisperResult }) => {
+    const callsign = actor.name.match(/"([^"]+)"/)
+    const actorName = callsign ? callsign[1] : actor.name
+
+    const chatMessage = generateChatMessage({
+        actorName,
+        remainingShields,
+        remainingWounds,
+        totalDamage,
+        shieldDamage,
+        woundDamage,
+        hasShields
+    })
+
+    applyDamage({ target: actor, remainingWounds, remainingShields })
+
+    ChatMessage.create({
+        user: game.user._id,
+        speaker: ChatMessage.getSpeaker(),
+        content: chatMessage,
+        // If the user wants the result to be private, only they will see the message
+        whisper: whisperResult ? [game.user._id] : null
+    });
+}
+
 const generateChatMessage = ({ actorName, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields }) => {
     // Target took no damage
     if (totalDamage <= 0) {
@@ -326,7 +411,7 @@ const applyDamage = ({ target, remainingWounds, remainingShields }) => {
     })
 }
 
-const handleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, resistance, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields }) => {
+const handleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields }) => {
     const hitResult = hitData.reduce((acc, curr) => {
         const { hitNumber, damageInstances } = curr
 
@@ -339,17 +424,17 @@ const handleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, resist
         const damageResults = damageInstances.reduce((acc, curr) => {
             const { damage, pierce, location } = curr
 
-            // Handle any extra pierce being applied form the form, e.g. from a charge
+            // Handle any extra pierce being applied from the form, e.g. from a charge
             const totalPierce = pierce + extraPierce
 
             // Handle any damage multipliers being applied from the form, e.g. from a grenade's kill radius
             const totalDamage = damage * damageMultiplier
 
-            const { shieldDamage, woundDamage } = calculateDamage({
+            const { shieldDamage, woundDamage } = calculatePersonDamage({
                 damage: totalDamage,
                 pierce: totalPierce,
                 location,
-                resistance,
+                armour,
                 weaponSpecialRules,
                 coverLocations,
                 coverPoints,
@@ -383,32 +468,12 @@ const handleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, resist
         remainingShields
     } = hitResult
 
-    const callsign = actor.name.match(/"([^"]+)"/)
-    const actorName = callsign ? callsign[1] : actor.name
-
-    const chatMessage = generateChatMessage({
-        actorName,
-        remainingShields,
-        remainingWounds,
-        totalDamage,
-        shieldDamage,
-        woundDamage,
-        hasShields
-    })
-
-    applyDamage({ target: actor, remainingWounds, remainingShields })
-
-    ChatMessage.create({
-        user: game.user._id,
-        speaker: ChatMessage.getSpeaker(),
-        content: chatMessage,
-        // If the user wants the result to be private, only they will see the message
-        whisper: whisperResult ? [game.user._id] : null
-    });
+    handleHitAftermath({ actor, remainingShields, remainingWounds, totalDamage, shieldDamage, woundDamage, hasShields, whisperResult })
 }
 
-const handleVehicleHit = ({ vehicle }) => {
-    const crew = vehicle.system.crew
+const handleVehicleCrewHit = ({ actor, hitRoll, pierce, extraPierce, damage, damageMultiplier, vehicleHitLocation, weaponSpecialRules, coverLocations, coverPoints, whisperResult }) => {
+    const crew = actor.system.crew
+    const isOpenTop = actor.system.special.openTop.has
 
     const crewActorIds = [
         ...crew.operators.map(operator => operator.id).filter(id => id !== null),
@@ -417,15 +482,164 @@ const handleVehicleHit = ({ vehicle }) => {
     ];
 
     // Get actors for crew and determine if they get hit
-    const crewActors = crewActorIds.map((id) => {
-        const actor = game.actors.get(id)
-        const roll = rollDice('d100')
-        const hit = roll >= 96 // crew have 5% chance of being hit inside vehicle
+    // Finding the actors with game.actors here doesn't work as it only returns the base actor, it doesn't include armour or anything
+    const crewActors = crewActorIds.map((id) => canvas.tokens.placeables.find((token) => token.actor._id === id)?.actor).filter((actor) => actor)
 
-        return { actor, hit }
-    })
+    if (crewActors.length) {
+        const crewActorsHit = crewActors.filter(() => rollDice('d100') >= 1)
 
-    console.log({ crewActors })
+        if (crewActorsHit.length) {
+            // Calculate hit location for crew member based on the hit roll
+            const crewHitLocation = calculateHitLocation(hitRoll)
+
+            crewActorsHit.forEach((crewActor) => {
+                const totalPierce = pierce + extraPierce
+                const totalDamage = damage * damageMultiplier
+                const crewMemberHasShields = !!crewActor.system.shields.max
+                const crewMemberCurrentWounds = crewActor.system.wounds.value
+                const crewMemberCurrentShields = crewActor.system.shields.value
+
+                console.log('Crew Hit (Canvas)', { actor: crewActor, shields: crewActor.system.shields.value, wounds: crewActor.system.wounds.value })
+
+                let crewArmour = crewActor.system.armor
+                const vehicleArmourValue = actor.system.armor[vehicleHitLocation].value
+
+                // If vehicle isn't open top then the crew gets the benefits of the vehicle's armour
+                if (!isOpenTop) {
+                    crewArmour = Object.fromEntries(
+                        Object.entries(crewArmour).map(([key, stats]) => [
+                            key,
+                            {
+                                protection: stats.protection + vehicleArmourValue,
+                                resistance: stats.resistance + vehicleArmourValue
+                            }
+                        ])
+                    );
+                }
+
+                const { shieldDamage, woundDamage } = calculatePersonDamage({
+                    damage: totalDamage,
+                    pierce: totalPierce,
+                    location: crewHitLocation,
+                    armour: crewArmour,
+                    weaponSpecialRules,
+                    coverLocations,
+                    coverPoints,
+                    energyShields: crewMemberCurrentShields
+                })
+
+                console.log('Crew Damage Result', { actor: crewActor, hitLocation: crewHitLocation, shieldDamage, woundDamage })
+
+                handleHitAftermath({
+                    actor: crewActor,
+                    remainingShields: crewMemberCurrentShields - shieldDamage,
+                    remainingWounds: crewMemberCurrentWounds - woundDamage,
+                    totalDamage: shieldDamage + woundDamage,
+                    shieldDamage,
+                    woundDamage,
+                    hasShields: crewMemberHasShields,
+                    whisperResult
+                })
+            })
+        }
+    }
+}
+
+const handleVehicleHit = ({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentBreakpoints, currentShields, actor, whisperResult, hasShields, vehicleHitLocation }) => {
+    const hitResult = hitData.reduce((acc, curr) => {
+        const { hitNumber, hitRoll, damageInstances } = curr
+
+        if (!appliedHits[hitNumber]) {
+            // if hit wasn't checked we don't calculate damage, this could be because it was evaded for example
+            return acc
+        }
+
+        // Each hit can have multiple instances of damage, e.g burst fire so we need to loop over all of them
+        const damageResults = damageInstances.reduce((damageAcc, damageCurr) => {
+            const { damage, pierce, location } = damageCurr
+
+            let breakpointHitLocation = location
+
+            // TODO handle armour being halved when vehicle hull reaches 0
+            // TODO handle damage taken when hull is 0
+            // If targeting a breakpoint that is already destroyed, the damage is applied to the hull instead
+            if (damageAcc.breakpoints[vehicleBreakpointMap[breakpointHitLocation]].value <= 0) {
+                breakpointHitLocation = 'Hull'
+            }
+
+            // Handle any extra pierce being applied from the form, e.g. from a charge
+            const totalPierce = pierce + extraPierce
+
+            // Handle any damage multipliers being applied from the form, e.g. from a grenade's kill radius
+            const totalDamage = damage * damageMultiplier
+
+            const { shieldDamage, vehicleDamage } = calculateVehicleDamage({
+                damage: totalDamage,
+                pierce: totalPierce,
+                location: vehicleHitLocation,
+                armour,
+                weaponSpecialRules,
+                coverLocations,
+                coverPoints,
+                energyShields: damageAcc.remainingShields
+            })
+
+            // If hitting hull and damage has penetrated the hull, there is a 5% chance to hit a crew member
+            if (breakpointHitLocation === 'Hull' && vehicleDamage >= 0) {
+                handleVehicleCrewHit({ actor, hitRoll, pierce, extraPierce, damage, damageMultiplier, vehicleHitLocation, weaponSpecialRules, coverLocations, coverPoints, whisperResult })
+            }
+
+            console.log('Vehicle Damage Result', { shieldDamage, vehicleDamage, vehicleHitLocation })
+
+            const mappedBreakpointHitLocation = vehicleBreakpointMap[breakpointHitLocation]
+
+            damageAcc.totalDamage += shieldDamage
+            damageAcc.totalDamage += vehicleDamage
+            damageAcc.vehicleDamage += vehicleDamage
+            damageAcc.shieldDamage += shieldDamage
+            damageAcc.remainingShields -= shieldDamage
+            damageAcc.breakpoints = {
+                ...damageAcc.breakpoints,
+                [mappedBreakpointHitLocation]: {
+                    ...damageAcc.breakpoints[mappedBreakpointHitLocation],
+                    value: damageAcc.breakpoints[mappedBreakpointHitLocation].value - vehicleDamage
+                }
+            }
+
+            return damageAcc
+        }, { totalDamage: 0, shieldDamage: 0, vehicleDamage: 0, breakpoints: {...acc.breakpoints }, remainingShields: acc.remainingShields })
+
+        acc.totalDamage += damageResults.totalDamage
+        acc.shieldDamage += damageResults.shieldDamage
+        acc.vehicleDamage += damageResults.vehicleDamage
+        acc.remainingShields = damageResults.remainingShields
+
+        acc.breakpoints = Object.entries(damageResults.breakpoints).reduce((breakpoints, [key, value]) => ({
+            ...breakpoints,
+            [key]: {
+                ...breakpoints[key],
+                value: value.value
+            }
+        }), acc.breakpoints)
+
+        return acc
+    }, { totalDamage: 0, shieldDamage: 0, vehicleDamage: 0, breakpoints: structuredClone(currentBreakpoints), remainingShields: currentShields })
+
+    const {
+        totalDamage,
+        shieldDamage,
+        vehicleDamage,
+        breakpoints,
+        remainingShields
+    } = hitResult
+
+    const callsign = actor.name.match(/"([^"]+)"/)
+    const actorName = callsign ? callsign[1] : actor.name
+
+    // TODO chatMessage
+
+    // TODO applyDamage
+    // applyDamage({ target: actor, remainingWounds, remainingShields })
 }
 
 // Html for the dialog
@@ -443,15 +657,15 @@ const dialogStyles = `
         align-items: center;
         gap: 10px;
     }
-    .cover-locations-container {
+    .cover-locations-container, .vehicle-hit-locations-container {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
     }
-    .checkbox-label {
+    .checkbox-label, .location.radio.label {
         display: flex;
         align-items: center;
-        gap: 5px;
+        cursor: pointer;
     }
     .location-checkbox-label {
         width: calc(33.33% - 10px);
@@ -462,11 +676,16 @@ const dialogStyles = `
         gap: 10px;
         white-space: nowrap;
     }
+    .vehicle-hit-locations-container input[type="radio"] {
+        transform: scale(1.4);
+        margin-right: 5px;
+        cursor: pointer;
+    }
 </style>
 `;
 
 const coverLocationsSection = `
-        <fieldset class="form-section">
+        <fieldset class="form-section cover-form-section">
             <legend>Locations in Cover</legend>
             <div class="cover-locations-container">
                 <!-- Dynamically generated checkboxes will render here -->
@@ -562,16 +781,16 @@ new Dialog({
             // Hits
             const hits = html.find("input[name='hits']")
 
-            const coverLocations = coverLocationInputs.toArray().reduce((curr, el) => {
-                const location = el.value;
-                curr[location] = el.checked;
-                return curr;
+            const coverLocations = coverLocationInputs.toArray().reduce((acc, curr) => {
+                const location = curr.value;
+                acc[location] = curr.checked;
+                return acc;
             }, {});
 
-            const appliedHits = hits.toArray().reduce((curr, el) => {
-                const hit = el.value;
-                curr[hit] = el.checked;
-                return curr;
+            const appliedHits = hits.toArray().reduce((acc, curr) => {
+                const hit = curr.value;
+                acc[hit] = curr.checked;
+                return acc;
             }, {});
 
             const lastAttackMessage = getLastAttackFromChat()
@@ -585,7 +804,7 @@ new Dialog({
             const hitData = extractDataForHits(lastAttackMessage.content)
 
             const isAttackAgainstVehicle = hitData.every(hit =>
-                hit.damageInstances.every(instance => instance.location in vehicleHitLocationMap)
+                hit.damageInstances.every(instance => instance.location in vehicleBreakpointMap)
             );
 
             // Make sure the target is a vehicle if the attack is against a vehicle
@@ -604,19 +823,28 @@ new Dialog({
 
             const weaponSpecialRules = handleWeaponSpecialRules(specialRules)
 
-            const resistance = actor.system.armor
+            const armour = actor.system.armor
             const hasShields = !!actor.system.shields.max
             const currentShields = actor.system.shields.value
 
             // If target is a vehicle we have to handle this differently
             if (actor.type === 'Vehicle') {
-                // TODO handle vehicle
-                console.log('Vehicle hit', { actor })
-                handleVehicleHit({ vehicle: actor })
+                // Vehicle hit locations
+                const vehicleHitLocationInputs = html.find("input[name='vehicleHitLocation']")
+                const vehicleHitLocation = vehicleHitLocationInputs.toArray().find(input => input.checked)?.value || null;
+
+                if (!vehicleHitLocation) {
+                    console.error('No vehicle hit location selected.')
+                    return
+                }
+
+                const currentBreakpoints = actor.system.breakpoints
+
+                handleVehicleHit({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentBreakpoints, currentShields, actor, whisperResult, hasShields, vehicleHitLocation })
             } else {
                 const currentWounds = actor.system.wounds.value
 
-                handleHit({ hitData, appliedHits, extraPierce, damageMultiplier, resistance, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields })
+                handleHit({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields })
             }
         }
       },
@@ -628,20 +856,70 @@ new Dialog({
     render: (html) => {
         // Render cover options, this differs if the target is a vehicle or not
         const { actor } = getTarget()
-        const coverLocationsContainer = html.find('.cover-locations-container');
-        const locations = actor.type === 'Vehicle' ? vehicleHitLocationMap : hitLocationMap
-        const hitLocationFormOptions = Object.entries(locations).map(([key, value]) => ({ name: value, label: key }))
 
-        hitLocationFormOptions.forEach((location) => {
-            const label = $(`
-                <label class="location-checkbox-label checkbox-label">
-                    <input type="checkbox" name="coverLocation" value="${location.name}" />
-                    ${location.label}
-                </label>`
-            );
+        if (!actor) {
+            console.error('No target found.')
+            return
+        }
 
-            coverLocationsContainer.append(label);
-        })
+        // If target is a vehicle then we want to render some extra form elements
+        if (actor.type === 'Vehicle') {
+            const vehicleHitLocations = ['Front', 'Side', 'Back', 'Top', 'Bottom']
+            const locationFormOptions = vehicleHitLocations.map((location) => ({ name: location.toLowerCase(), label: location }))
+            const coverLocationsContainer = html.find('.cover-locations-container')
+
+            locationFormOptions.forEach((location) => {
+                const label = $(`
+                    <label class="location-checkbox-label checkbox-label">
+                        <input type="checkbox" name="coverLocation" value="${location.name}" />
+                        ${location.label}
+                    </label>`
+                );
+
+                coverLocationsContainer.append(label);
+            })
+
+            const vehicleHitLocationsSection = `
+                <fieldset class="form-section vehicle-hit-locations-form-section">
+                    <legend>Vehicle hit Location</legend>
+                    <div class="vehicle-hit-locations-container">
+                        <!-- Dynamically generated checkboxes will render here -->
+                    </div>
+                </fieldset>
+            `
+
+            // Dynamically add vehicle hit location before cover locations section
+            html.find('.form .cover-form-section').before(vehicleHitLocationsSection)
+
+            const vehicleHitLocationsContainer = html.find('.vehicle-hit-locations-container')
+
+            locationFormOptions.forEach((location, index) => {
+                const defaultSelection = index === 0
+
+                const label = $(`
+                    <label class="location-radio-label radio-label">
+                        <input type="radio" name="vehicleHitLocation" value="${location.name}" ${defaultSelection ? 'checked' : ''} />
+                        ${location.label}
+                    </label>`
+                );
+
+                vehicleHitLocationsContainer.append(label);
+            })
+        } else {
+            const locationFormOptions = Object.entries(hitLocationMap).map(([key, value]) => ({ name: value, label: key }))
+            const coverLocationsContainer = html.find('.cover-locations-container')
+
+            locationFormOptions.forEach((location) => {
+                const label = $(`
+                    <label class="location-checkbox-label checkbox-label">
+                        <input type="checkbox" name="coverLocation" value="${location.name}" />
+                        ${location.label}
+                    </label>`
+                );
+
+                coverLocationsContainer.append(label);
+            })
+        }
 
         // Render hits from the last attack chat message
         const damageInstancesContainer = html.find('.damage-instances-container');
