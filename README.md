@@ -17,9 +17,7 @@ If you just want the macro to copy and paste into your game you get find it here
 
 Macro that reads the latest attack from the chat messages and calculates the damage that the selected token takes (falls back to the current character if no token is selected).
 
-This is still early in development and I am still very new to the Mythic system, so there's definitely a lot of missing interactions, and you could see unexpected results if your case isn't covered below.
-
-I'll mostly just be updating the functionality as they are encountered in my sessions, but if you have any requests please create an issue with detailed examples of what scenario you'd like covered and I'll consider adding it.
+This is still early in development and I'm still fairly new to the Mythic system, so there's definitely a lot of missing interactions, and you could see unexpected results if your case isn't covered below.
 
 #### Features
 
@@ -32,12 +30,16 @@ So far the logic covers the basics, plus:
   - Kinetic
   - Blast
   - Various special rules that do bonus damage against energy shields
+- Vehicle damage (beta)
 
 
 Also includes some extra options on the form:
 - Whisper result
   - This option will send the result as a whisper to the player who triggered the macro instead of a public message.
+- Hide damage results
+  - This options with hide the remaining values of the target, the damage will still be shown.
 - Damage multiplier (e.g. from kill radius on a grenade)
--  Extra pierce (e.g. from a charge attack)
+- Extra pierce (e.g. from a charge attack)
 - Areas of target being in cover
+- Hitting multiple breakpoints on a vehicle, e.g. with blast
 - Ignore certain hits (e.g. evading)
