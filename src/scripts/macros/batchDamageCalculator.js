@@ -89,12 +89,12 @@ const requiredSection = `
     <legend>Required Inputs</legend>
     <label class='input-label'>
         Damage Roll
-        <input type="text" name="damageRoll" placeholder="e.g. 4d10 + 24" value="6d10 + 34" />
+        <input type="text" name="damageRoll" placeholder="e.g. 4d10 + 24" />
     </label>
 
     <label class='input-label'>
         Pierce
-        <input type="number" name="pierce" value="8" />
+        <input type="number" name="pierce" value="0" />
     </label>
 </fieldset>
 `
