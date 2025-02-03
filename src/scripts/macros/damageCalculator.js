@@ -17,6 +17,10 @@ const vehicleBreakpointMap = {
     'Weapon': 'wep'
 }
 
+const reversedVehicleBreakpointMap = Object.fromEntries(
+    Object.entries(vehicleBreakpointMap).map(([key, value]) => [value, key])
+);
+
 // Should be a string format like '1d10' or '1d6 + 2', etc.
 const rollDice = (dice) => {
     const roll = new Roll(dice).evaluate({ async: false})
@@ -129,7 +133,11 @@ const extractDataForHits = (htmlString) => {
     return hits
 }
 
-const handleWeaponSpecialRules = (weaponSpecialRules) => {
+const getWeaponSpecialRules = (html) => {
+    const weaponSpecialRules = Array
+        .from(html.querySelectorAll('aside.special .special-rule'))
+        .map(span => span.textContent.trim().replace(/\s*\(\d+\)/, ''));
+
     // If the weapon has any of these special rules, when damaging energy shields it adds the weapon's pierce to the damage
     // Penetrating weapons also fall into this category but they are handled separately
     const specialRuleAddPierceAgainstShield = ['Spread', 'Cauterize', 'Kinetic', 'Blast', 'Kill', 'Carpet']
@@ -357,10 +365,11 @@ const generatePersonHitChatMessage = ({ actor, remainingShields, remainingWounds
     const callsign = actor.name.match(/"([^"]+)"/)
     const actorName = callsign ? callsign[1] : actor.name
 
-    let chatMessage = ''
+    let chatMessage = `<b>${actorName}</b>`
+    chatMessage += '<br><br>'
 
     if (totalDamage <= 0) {
-        chatMessage = 'No damage taken.'
+        chatMessage += 'No damage taken.'
     } else {
         if (remainingWounds <= 0) {
             chatMessage += `<b>${actorName} is down!</b>`
@@ -427,7 +436,12 @@ const applyPersonDamage = async ({ actor, remainingWounds, remainingShields }) =
     })
 }
 
-const handlePersonHit = async ({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields, hideDamageResult }) => {
+const handlePersonHit = async ({ hitData, appliedHits, extraPierce, damageMultiplier, weaponSpecialRules, coverLocations, coverPoints, actor, whisperResult, hideDamageResult }) => {
+    const hasShields = !!actor.system.shields.max
+    const currentShields = actor.system.shields.value
+    const currentWounds = actor.system.wounds.value
+    const armour = actor.system.armor
+
     const hitResult = hitData.reduce((acc, curr) => {
         const { hitNumber, damageInstances } = curr
 
@@ -492,10 +506,6 @@ const generateVehicleHitChatMessage = ({ actor, remainingShields, currentBreakpo
     const callsign = actor.name.match(/"([^"]+)"/)
     const actorName = callsign ? callsign[1] : actor.name
 
-    const reversedVehicleBreakpointMap = Object.fromEntries(
-        Object.entries(vehicleBreakpointMap).map(([key, value]) => [value, key])
-    );
-
     const damagedBreakpoints = Object.entries(remainingBreakpoints).reduce((acc, [key, value]) => {
         if (value.value < currentBreakpoints[key].value) {
             acc[key] = {
@@ -507,7 +517,8 @@ const generateVehicleHitChatMessage = ({ actor, remainingShields, currentBreakpo
         return acc
     }, {})
 
-    let chatMessage = ''
+    let chatMessage = `<b>${actorName}</b>`
+    chatMessage += '<br><br>'
 
     // Vehicle took no damage
     if (totalDamage <= 0) {
@@ -564,7 +575,7 @@ const applyVehicleHit = async ({ actor, remainingShields, currentBreakpoints, re
 
     await applyVehicleDamage({ actor, remainingShields, remainingBreakpoints })
 
-    ChatMessage.create({
+    await ChatMessage.create({
         user: game.user._id,
         speaker: ChatMessage.getSpeaker(),
         content: chatMessage,
@@ -646,7 +657,13 @@ const handleVehicleCrewHit = async ({ actor, hitRoll, pierce, extraPierce, damag
     }
 }
 
-const handleVehicleHit = async ({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentBreakpoints, currentShields, actor, whisperResult, hasShields, vehicleHitLocation, hideDamageResult }) => {
+const handleVehicleHit = async ({ hitData, appliedHits, extraPierce, damageMultiplier, weaponSpecialRules, coverLocations, coverPoints, actor, whisperResult, vehicleHitLocation, hideDamageResult, breakpointOverride }) => {
+
+    const hasShields = !!actor.system.shields.max
+    const currentShields = actor.system.shields.value
+    const currentBreakpoints = actor.system.breakpoints
+    const armour = actor.system.armor
+
     // Initialize accumulator values
     let totalDamage = 0;
     let shieldDamage = 0;
@@ -668,12 +685,12 @@ const handleVehicleHit = async ({ hitData, appliedHits, extraPierce, damageMulti
         for (let damageInstance of damageInstances) {
             const { damage, pierce, location } = damageInstance;
 
-            let breakpointHitLocation = location;
+            let breakpointHitLocation = breakpointOverride || location;
 
             // TODO handle armour being halved when vehicle hull reaches 0
             // TODO handle damage taken when hull is 0
             // If targeting a breakpoint that is already destroyed, the damage is applied to the hull instead
-            if (damageResult.remainingBreakpoints[vehicleBreakpointMap[breakpointHitLocation]].value <= 0) {
+            if (!damageResult.remainingBreakpoints[vehicleBreakpointMap[breakpointHitLocation]] || damageResult.remainingBreakpoints[vehicleBreakpointMap[breakpointHitLocation]].value <= 0) {
                 breakpointHitLocation = 'Hull';
             }
 
@@ -759,7 +776,7 @@ const dialogStyles = `
         align-items: center;
         gap: 10px;
     }
-    .cover-locations-container, .vehicle-hit-locations-container {
+    .cover-locations-container, .vehicle-hit-locations-container, .breakpoint-hit-locations-container {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
@@ -889,6 +906,7 @@ new Dialog({
 
             // Hits
             const hits = html.find("input[name='hits']")
+            const breakpointHitLocationInputs = html.find("input[name='breakpointHitLocation']")
 
             const coverLocations = coverLocationInputs.toArray().reduce((acc, curr) => {
                 const location = curr.value;
@@ -901,6 +919,14 @@ new Dialog({
                 acc[hit] = curr.checked;
                 return acc;
             }, {});
+
+            const breakpointHitLocations = breakpointHitLocationInputs.toArray().reduce((acc, curr) => {
+                if (curr.checked) {
+                    acc.push(reversedVehicleBreakpointMap[curr.value])
+                }
+
+                return acc
+            }, []);
 
             const lastAttackMessage = getLastAttackFromChat()
 
@@ -926,15 +952,9 @@ new Dialog({
             const lastAttackHtml = parser.parseFromString(lastAttackMessage.content, 'text/html');
 
             // Get weapon traits from weapon used in the attack
-            const specialRules = Array
-                .from(lastAttackHtml.querySelectorAll('aside.special .special-rule'))
-                .map(span => span.textContent.trim().replace(/\s*\(\d+\)/, ''));
+            const weaponSpecialRules = getWeaponSpecialRules(lastAttackHtml)
 
-            const weaponSpecialRules = handleWeaponSpecialRules(specialRules)
-
-            const armour = actor.system.armor
             const hasShields = !!actor.system.shields.max
-            const currentShields = actor.system.shields.value
 
             // If target is a vehicle we have to handle this differently
             if (actor.type === 'Vehicle') {
@@ -947,13 +967,48 @@ new Dialog({
                     return
                 }
 
-                const currentBreakpoints = actor.system.breakpoints
 
-                await handleVehicleHit({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentBreakpoints, currentShields, actor, whisperResult, hasShields, vehicleHitLocation, hideDamageResult })
+                for (const breakpoint of breakpointHitLocations) {
+                    const { actor: updatedActor } = getTarget()
+
+                    await handleVehicleHit({
+                        hitData,
+                        appliedHits,
+                        extraPierce,
+                        damageMultiplier,
+                        armour: updatedActor.system.armor,
+                        weaponSpecialRules,
+                        coverLocations,
+                        coverPoints,
+                        currentBreakpoints: updatedActor.system.breakpoints,
+                        currentShields: updatedActor.system.shields.value,
+                        actor: updatedActor,
+                        whisperResult,
+                        hasShields,
+                        vehicleHitLocation,
+                        hideDamageResult,
+                        breakpointOverride: breakpoint
+                    })
+                }
             } else {
-                const currentWounds = actor.system.wounds.value
+                const { actor: updatedActor } = getTarget()
 
-                await handlePersonHit({ hitData, appliedHits, extraPierce, damageMultiplier, armour, weaponSpecialRules, coverLocations, coverPoints, currentWounds, currentShields, actor, whisperResult, hasShields, hideDamageResult })
+                await handlePersonHit({
+                    hitData,
+                    appliedHits,
+                    extraPierce,
+                    damageMultiplier,
+                    armour: updatedActor.system.armor,
+                    weaponSpecialRules,
+                    coverLocations,
+                    coverPoints,
+                    currentWounds: updatedActor.system.wounds.value,
+                    currentShields: updatedActor.system.shields.value,
+                    actor: updatedActor,
+                    whisperResult,
+                    hasShields,
+                    hideDamageResult
+                })
             }
         }
       },
@@ -971,12 +1026,25 @@ new Dialog({
             return
         }
 
+        const lastAttackMessage = getLastAttackFromChat()
+
+        if (!lastAttackMessage) {
+            console.error('No attack message found in chat')
+            return
+        }
+
+        const hitData = extractDataForHits(lastAttackMessage.content)
+
         // If target is a vehicle then we want to render some extra form elements
         if (actor.type === 'Vehicle') {
             const vehicleHitLocations = ['Front', 'Side', 'Back', 'Top', 'Bottom']
             const locationFormOptions = vehicleHitLocations.map((location) => ({ name: location.toLowerCase(), label: location }))
             const coverLocationsContainer = html.find('.cover-locations-container')
 
+            const lastAttackHtml = parser.parseFromString(lastAttackMessage.content, 'text/html')
+            const weaponSpecialRules = getWeaponSpecialRules(lastAttackHtml)
+
+            // Cover locations
             locationFormOptions.forEach((location) => {
                 const label = $(`
                     <label class="location-checkbox-label checkbox-label">
@@ -1002,6 +1070,7 @@ new Dialog({
 
             const vehicleHitLocationsContainer = html.find('.vehicle-hit-locations-container')
 
+            // Hit direction locations
             locationFormOptions.forEach((location, index) => {
                 const defaultSelection = index === 0
 
@@ -1013,6 +1082,41 @@ new Dialog({
                 );
 
                 vehicleHitLocationsContainer.append(label);
+            })
+
+            const hitLocations = hitData.map(hit => hit.damageInstances[0].location)
+
+            // Breakpoint hit locations
+            const breakpointHitLocations = `
+                <fieldset class="form-section breakpoint-hit-locations-form-section">
+                    <legend>Breakpoint hit locations</legend>
+                    <div class="breakpoint-hit-locations-container">
+                        <!-- Dynamically generated checkboxes will render here -->
+                    </div>
+                </fieldset>
+            `
+
+            html.find('.form .cover-form-section').before(breakpointHitLocations)
+
+            const breakpointFormOptions = Object.entries(vehicleBreakpointMap).map(([key, value]) => ({ name: value, label: key }))
+
+            const breakpointHitLocationsContainer = html.find('.breakpoint-hit-locations-container')
+
+            breakpointFormOptions.forEach((location) => {
+
+                const label = $(`
+                    <label class="location-checkbox-label checkbox-label">
+                        <input
+                            type="checkbox"
+                            name="breakpointHitLocation"
+                            value="${location.name}"
+                            ${weaponSpecialRules.blast || hitLocations.includes(location.label) ? 'checked' : ''}
+                        />
+                        ${location.label}
+                    </label>`
+                );
+
+                breakpointHitLocationsContainer.append(label);
             })
         } else {
             const locationFormOptions = Object.entries(hitLocationMap).map(([key, value]) => ({ name: value, label: key }))
@@ -1032,14 +1136,6 @@ new Dialog({
 
         // Render hits from the last attack chat message
         const damageInstancesContainer = html.find('.damage-instances-container');
-        const lastAttackMessage = getLastAttackFromChat()
-
-        if (!lastAttackMessage) {
-            console.error('No attack message found in chat')
-            return
-        }
-
-        const hitData = extractDataForHits(lastAttackMessage.content)
 
         hitData.forEach((hit) => {
             const { hitNumber, damageInstances } = hit;
