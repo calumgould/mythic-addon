@@ -23,7 +23,7 @@ const reversedVehicleBreakpointMap = Object.fromEntries(
 
 // Should be a string format like '1d10' or '1d6 + 2', etc.
 const rollDice = (dice) => {
-    const roll = new Roll(dice).evaluate({ async: false})
+    const roll = new Roll(dice).evaluate({ async: false })
     return roll.total
 }
 
@@ -56,7 +56,7 @@ const getTarget = () => {
 
     // If no token is selected, try and fallback to the user's character
     if (!game.user.character) {
-        console.error('No target found. Please select a token.')
+        ui.notifications.error('No target found. Please select a token.')
         return { actor: null, token: null }
     }
 
@@ -885,7 +885,7 @@ new Dialog({
             const { actor, token } = getTarget()
 
             if (!actor || !token) {
-                console.error('No target found.')
+                ui.notifications.error('No target found.')
                 return
             }
 
@@ -931,7 +931,7 @@ new Dialog({
             const lastAttackMessage = getLastAttackFromChat()
 
             if (!lastAttackMessage) {
-                console.error('No attack message found in chat')
+                ui.notifications.error('No attack message found in chat')
                 return
             }
 
@@ -945,7 +945,7 @@ new Dialog({
             // Make sure the target is a vehicle if the attack is against a vehicle
             // Crew of the vehicle being hit will be handled automatically
             if (isAttackAgainstVehicle && actor.type !== 'Vehicle') {
-                console.error('Vehicle hit detected but target is not a vehicle.')
+                ui.notifications.error('Vehicle hit detected but target is not a vehicle.')
                 return
             }
 
@@ -963,7 +963,7 @@ new Dialog({
                 const vehicleHitLocation = vehicleHitLocationInputs.toArray().find(input => input.checked)?.value || null;
 
                 if (!vehicleHitLocation) {
-                    console.error('No vehicle hit location selected.')
+                    ui.notifications.error('No vehicle hit location selected.')
                     return
                 }
 
@@ -1022,14 +1022,14 @@ new Dialog({
         const { actor } = getTarget()
 
         if (!actor) {
-            console.error('No target found.')
+            ui.notifications.error('No target found.')
             return
         }
 
         const lastAttackMessage = getLastAttackFromChat()
 
         if (!lastAttackMessage) {
-            console.error('No attack message found in chat')
+            ui.notifications.error('No attack message found in chat')
             return
         }
 
