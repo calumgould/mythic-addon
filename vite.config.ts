@@ -76,6 +76,7 @@ export default defineConfig({
         updateModuleManifestPlugin(),
         copy({
           targets: [
+            { src: "src/assets", dest: "dist/assets" },
             { src: "src/lang", dest: "dist" },
             { src: "src/packs", dest: "dist" },
             { src: "src/styles", dest: "dist" },
