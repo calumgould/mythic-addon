@@ -182,7 +182,7 @@ const calculatePersonDamage = ({ damage, pierce, location, armour, weaponSpecial
     const applyHeadshot = location === 'Head' && weaponSpecialRules.headshot
     const isHitLocationInCover = coverLocations[mappedHitLocation]
 
-    let resistanceAtHitLocation = armour[mappedHitLocation].resistance
+    let resistanceAtHitLocation = armour[mappedHitLocation]?.resistance
 
     // Protection is the armour without toughness modifier applied
     if (applyHeadshot) {
