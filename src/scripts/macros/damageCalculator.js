@@ -262,8 +262,6 @@ const calculateVehicleDamage = ({ damage, pierce, location, armour, weaponSpecia
 
     let armourAtHitLocation = armour[location].value
 
-    // TODO handle blast
-
     // If location being hit is in cover, add the cover points to the overall armour
     if (isHitLocationInCover) {
         armourAtHitLocation += coverPoints
@@ -436,7 +434,7 @@ const applyPersonDamage = async ({ actor, remainingWounds, remainingShields }) =
     })
 }
 
-const handlePersonHit = async ({ hitData, appliedHits, extraPierce, damageMultiplier, weaponSpecialRules, coverLocations, coverPoints, actor, whisperResult, hideDamageResult }) => {
+const handlePersonHit = async ({ hitData, appliedHits, extraPierce, damageMultiplier, weaponSpecialRules, coverLocations, coverPoints, actor, whisperResult, hideDamageResult, calledShotLocation }) => {
     const hasShields = !!actor.system.shields.max
     const currentShields = actor.system.shields.value
     const currentWounds = actor.system.wounds.value
@@ -463,7 +461,8 @@ const handlePersonHit = async ({ hitData, appliedHits, extraPierce, damageMultip
             const { shieldDamage, woundDamage } = calculatePersonDamage({
                 damage: totalDamage,
                 pierce: totalPierce,
-                location,
+                // Override with called shot location if one was specified, if not just use the location from the hit roll
+                location: calledShotLocation || location,
                 armour,
                 weaponSpecialRules,
                 coverLocations,
@@ -776,7 +775,7 @@ const dialogStyles = `
         align-items: center;
         gap: 10px;
     }
-    .cover-locations-container, .vehicle-hit-locations-container, .breakpoint-hit-locations-container {
+    .cover-locations-container, .vehicle-hit-locations-container, .breakpoint-hit-locations-container, .called-shot-locations-container {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
@@ -795,7 +794,7 @@ const dialogStyles = `
         gap: 10px;
         white-space: nowrap;
     }
-    .vehicle-hit-locations-container input[type="radio"] {
+    .vehicle-hit-locations-container input[type="radio"], .called-shot-locations-container input[type="radio"] {
         transform: scale(1.4);
         margin-right: 5px;
         cursor: pointer;
@@ -901,6 +900,9 @@ new Dialog({
             // Damage modifiers
             const damageMultiplier = parseInt(html.find("input[name='damageMultiplier']").val(), 10);
 
+            // Called shot location
+            const calledShotLocation = html.find("input[name='calledShotLocation']:checked").val()
+
             // Cover Locations
             const coverLocationInputs = html.find("input[name='coverLocation']")
 
@@ -967,7 +969,6 @@ new Dialog({
                     return
                 }
 
-
                 for (const breakpoint of breakpointHitLocations) {
                     const { actor: updatedActor } = getTarget()
 
@@ -1007,7 +1008,8 @@ new Dialog({
                     actor: updatedActor,
                     whisperResult,
                     hasShields,
-                    hideDamageResult
+                    hideDamageResult,
+                    calledShotLocation
                 })
             }
         }
@@ -1084,7 +1086,7 @@ new Dialog({
                 vehicleHitLocationsContainer.append(label);
             })
 
-            const hitLocations = hitData.map(hit => hit.damageInstances[0].location)
+            const hitLocations = hitData.map(hit => hit.damageInstances[0].location).filter((location) => !!location)
 
             // Breakpoint hit locations
             const breakpointHitLocations = `
@@ -1119,6 +1121,38 @@ new Dialog({
                 breakpointHitLocationsContainer.append(label);
             })
         } else {
+            const hitLocations = hitData.map(hit => hit.damageInstances[0].location).filter((location) => !!location)
+
+            if (hitLocations.length) {
+                const calledShotLocationSection = `
+                    <fieldset class="form-section called-shot-locations-form-section">
+                        <legend>Called shot location</legend>
+                        <div class="called-shot-locations-container">
+                            <!-- Dynamically generated checkboxes will render here -->
+                        </div>
+                    </fieldset>
+                `
+
+                // Dynamically add person hit location before cover locations section
+                html.find('.form .cover-form-section').before(calledShotLocationSection)
+
+                const calledShotLocationContainer = html.find('.called-shot-locations-container')
+
+                const calledShotLocationFormOptions = Object.entries(hitLocationMap).map(([key, _]) => ({ name: key, label: key }))
+
+                // Person hit locations
+                calledShotLocationFormOptions.forEach((location) => {
+                    const label = $(`
+                        <label class="location-radio-label radio-label">
+                            <input type="radio" name="calledShotLocation" value="${location.name}" />
+                            ${location.label}
+                        </label>`
+                    );
+
+                    calledShotLocationContainer.append(label);
+                })
+            }
+
             const locationFormOptions = Object.entries(hitLocationMap).map(([key, value]) => ({ name: value, label: key }))
             const coverLocationsContainer = html.find('.cover-locations-container')
 
