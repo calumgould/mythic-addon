@@ -44,3 +44,22 @@ Also includes some extra options on the form:
 - Areas of target being in cover
 - Hitting multiple breakpoints on a vehicle, e.g. with blast
 - Ignore certain hits (e.g. evading)
+
+## Creating a new release
+
+Update the version in `package.json` and `module.json`
+First run
+
+```shell
+npm run build
+```
+
+Then bundling the macro itself takes a bit more work.
+
+1. Create the macro in Foundry, then right click and export the JSON.
+2. Update `src/packs/macros-mythic.json` with what you exported.
+3. Commit those changes and you're ready to make a release!
+
+Go to [Releases](https://github.com/calumgould/mythic-addon/releases) and create a new release.
+
+The github workflow should take care of the rest and add the final bundle files to the release once it completes.
