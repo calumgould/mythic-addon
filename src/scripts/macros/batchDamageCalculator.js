@@ -1,87 +1,87 @@
 const rollDice = (dice) => {
-    const roll = new Roll(dice).evaluate({ async: false })
-    return roll.total
+  const roll = new Roll(dice).evaluate({ async: false })
+  return roll.total
 }
 
 const calculateDamage = ({ actor, damage, pierce, damageMultiplier }) => {
-    const armour = actor.system.armor
-    const shields = actor.system.shields.value
+  const armour = actor.system.armor
+  const shields = actor.system.shields.value
 
-    const lowestArmour = Math.min(...Object.values(armour).map(part => part.resistance))
+  const lowestArmour = Math.min(...Object.values(armour).map((part) => part.resistance))
 
-    let remainingDamage = damage * damageMultiplier
+  let remainingDamage = damage * damageMultiplier
 
-    let shieldDamage = 0
-    let woundDamage = 0
+  let shieldDamage = 0
+  let woundDamage = 0
 
-    if (shields > 0) {
-        if (shields >= remainingDamage) {
-            shieldDamage = remainingDamage
-            remainingDamage = 0
-        } else {
-            shieldDamage = shields
-            remainingDamage -= shields
-        }
+  if (shields > 0) {
+    if (shields >= remainingDamage) {
+      shieldDamage = remainingDamage
+      remainingDamage = 0
+    } else {
+      shieldDamage = shields
+      remainingDamage -= shields
     }
+  }
+
+  if (remainingDamage > 0) {
+    remainingDamage += pierce
+    remainingDamage -= lowestArmour
 
     if (remainingDamage > 0) {
-        remainingDamage += pierce
-        remainingDamage -= lowestArmour
+      woundDamage = remainingDamage
+    }
+  }
 
-        if (remainingDamage > 0) {
-            woundDamage = remainingDamage
-        }
-   }
-
-    return { shieldDamage, woundDamage }
+  return { shieldDamage, woundDamage }
 }
 
 const calculateBatchDamage = async ({ damageRoll, pierce, damageMultiplier }) => {
-    const selectedTokens = canvas.tokens.controlled
+  const selectedTokens = canvas.tokens.controlled
 
-    if (!selectedTokens.length) {
-        ui.notifications.error('No tokens selected.')
-        return
-    }
+  if (!selectedTokens.length) {
+    ui.notifications.error('No tokens selected.')
+    return
+  }
 
-    if (selectedTokens.some((token) => token.actor.type === 'Vehicle')) {
-        ui.notifications.error('Vehicles not supported.')
-        return
-    }
+  if (selectedTokens.some((token) => token.actor.type === 'Vehicle')) {
+    ui.notifications.error('Vehicles not supported.')
+    return
+  }
 
-    const damage = rollDice(damageRoll)
+  const damage = rollDice(damageRoll)
 
-    if (!damage) {
-        ui.notifications.error('Invalid damage roll.')
-        return
-    }
+  if (!damage) {
+    ui.notifications.error('Invalid damage roll.')
+    return
+  }
 
-    const tokensToUpdate = selectedTokens.map(async (token, index) => {
-        const { shieldDamage, woundDamage } = calculateDamage({ actor: token.actor, damage, pierce, damageMultiplier })
+  const tokensToUpdate = selectedTokens.map(async (token, index) => {
+    const { shieldDamage, woundDamage } = calculateDamage({ actor: token.actor, damage, pierce, damageMultiplier })
 
-        await token.actor.update({
-            "system.wounds.value": token.actor.system.wounds.value - woundDamage,
-            "system.shields.value": token.actor.system.shields.value - shieldDamage
-        })
-
-        if (token.actor.system.wounds.value <= 0) {
-            return `[${index + 1}] ${token.actor.name} is dead.`
-        } else if (shieldDamage > 0) {
-            return `[${index + 1}] ${token.actor.name} took ${shieldDamage} shield damage and ${woundDamage} wound damage.`
-        } else {
-            return `[${index + 1}] ${token.actor.name} took ${woundDamage} wound damage.`
-        }
+    await token.actor.update({
+      'system.wounds.value': token.actor.system.wounds.value - woundDamage,
+      'system.shields.value': token.actor.system.shields.value - shieldDamage,
     })
 
-    const messages = await Promise.all(tokensToUpdate)
+    if (token.actor.system.wounds.value <= 0) {
+      return `[${index + 1}] ${token.actor.name} is dead.`
+    } else if (shieldDamage > 0) {
+      return `[${index + 1}] ${token.actor.name} took ${shieldDamage} shield damage and ${woundDamage} wound damage.`
+    } else {
+      return `[${index + 1}] ${token.actor.name} took ${woundDamage} wound damage.`
+    }
+  })
 
-    const chatMessage = messages.join('<br>')
+  const messages = await Promise.all(tokensToUpdate)
 
-    ChatMessage.create({
-        user: game.user._id,
-        speaker: ChatMessage.getSpeaker(),
-        content: chatMessage,
-    });
+  const chatMessage = messages.join('<br>')
+
+  ChatMessage.create({
+    user: game.user._id,
+    speaker: ChatMessage.getSpeaker(),
+    content: chatMessage,
+  })
 }
 
 const requiredSection = `
@@ -137,28 +137,28 @@ const dialogStyles = `
         white-space: nowrap;
     }
 </style>
-`;
+`
 
 new Dialog({
-    title: 'Ordnance Batch Damage Calculator',
-    content: `
+  title: 'Ordnance Batch Damage Calculator',
+  content: `
         ${dialogStyles}
         ${formSection}
     `,
-    buttons:{
-        confirm: {
-            icon: "<i class='fas fa-check'></i>",
-            label: "Calculate",
-            callback: async (html) => {
-                const damageRoll = html.find("input[name='damageRoll']").val()
-                const pierce = parseInt(html.find("input[name='pierce']").val(), 10)
-                const damageMultiplier = parseInt(html.find("input[name='damageMultiplier']").val(), 10)
+  buttons: {
+    confirm: {
+      icon: "<i class='fas fa-check'></i>",
+      label: 'Calculate',
+      callback: async (html) => {
+        const damageRoll = html.find("input[name='damageRoll']").val()
+        const pierce = parseInt(html.find("input[name='pierce']").val(), 10)
+        const damageMultiplier = parseInt(html.find("input[name='damageMultiplier']").val(), 10)
 
-                await calculateBatchDamage({ damageRoll, pierce, damageMultiplier })
-            },
-        },
-        cancel: {
-            label: 'Cancel'
-        }
-    }
-}).render(true);
+        await calculateBatchDamage({ damageRoll, pierce, damageMultiplier })
+      },
+    },
+    cancel: {
+      label: 'Cancel',
+    },
+  },
+}).render(true)

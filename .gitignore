@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Dev
+src/scripts/macros/damageCalcDev.js

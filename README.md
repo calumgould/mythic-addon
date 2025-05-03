@@ -22,6 +22,7 @@ This is still early in development and I'm still fairly new to the Mythic system
 #### Features
 
 So far the logic covers the basics, plus:
+
 - Burst fire (multiple damage instances on one hit)
 - Energy shields
 - Weapon special rules:
@@ -32,8 +33,8 @@ So far the logic covers the basics, plus:
   - Various special rules that do bonus damage against energy shields
 - Vehicle damage (beta)
 
-
 Also includes some extra options on the form:
+
 - Whisper result
   - This option will send the result as a whisper to the player who triggered the macro instead of a public message.
 - Hide damage results

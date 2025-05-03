@@ -1,46 +1,42 @@
 {
-    "id": "mythic-addon",
-    "title": "Mythic Addon Module",
-    "description": "A collection of utilities for the fan-made Mythic system on Foundry.",
-    "authors": [
-        {
-            "name": "Calum Gould"
-        }
+  "id": "mythic-addon",
+  "title": "Mythic Addon Module",
+  "description": "A collection of utilities for the fan-made Mythic system on Foundry.",
+  "authors": [
+    {
+      "name": "Calum Gould"
+    }
+  ],
+  "version": "0.2.0",
+  "compatibility": {
+    "minimum": "11",
+    "verified": "11"
+  },
+  "systems": ["mythic"],
+  "relationships": {
+    "systems": [
+      {
+        "id": "mythic",
+        "type": "system",
+        "manifest": "https://raw.githubusercontent.com/AugmenTab/mythic/main/system.json"
+      }
     ],
-    "version": "0.1.12",
-    "compatibility": {
-        "minimum": "11",
-        "verified": "11"
-    },
-    "systems": ["mythic"],
-    "relationships": {
-        "systems": [
-            {
-                "id": "mythic",
-                "type": "system",
-                "manifest": "https://raw.githubusercontent.com/AugmenTab/mythic/main/system.json"
-            }
-        ],
-        "requires": []
-    },
-    "esmodules": [
-        "scripts/module.js"
-    ],
-    "packFolders": [
-        {
-            "name": "Mythic Addon",
-            "packs": [
-                "mythic-addon-macros"
-            ]
-        }
-    ],
-    "packs": [
-        {
-            "name": "mythic-addon-macros",
-            "label": "Mythic Addon Macros",
-            "path": "packs/macros-mythic",
-            "module": "mythic-addon",
-            "type": "Macro"
-        }
-    ]
+    "requires": []
+  },
+  "esmodules": ["scripts/module.js"],
+  "packFolders": [
+    {
+      "name": "Mythic Addon",
+      "packs": ["mythic-addon-macros"]
+    }
+  ],
+  "packs": [
+    {
+      "name": "mythic-addon-macros",
+      "label": "Mythic Addon Macros",
+      "path": "packs/macros-mythic.db",
+      "module": "mythic-addon",
+      "type": "Macro"
+    }
+  ]
 }
