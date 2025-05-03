@@ -25,5 +25,31 @@
       "modifiedTime": 1739300919892,
       "lastModifiedBy": "9ReVRlywWl9KNYH8"
     }
+  },
+  {
+    "_id": "mythic-batch-damage-calculator",
+    "name": "Ordnance Damage Calculator",
+    "type": "script",
+    "scope": "global",
+    "author": "9ReVRlywWl9KNYH8",
+    "img": "modules/mythic-addon/assets/airstrike.svg",
+    "command": "const rollDice = (dice) => {\n    const roll = new Roll(dice).evaluate({ async: false })\n    return roll.total\n}\n\nconst calculateDamage = ({ actor, damage, pierce, damageMultiplier }) => {\n    const armour = actor.system.armor\n    const shields = actor.system.shields.value\n\n    const lowestArmour = Math.min(...Object.values(armour).map(part => part.resistance))\n\n    let remainingDamage = damage * damageMultiplier\n\n    let shieldDamage = 0\n    let woundDamage = 0\n\n    if (shields > 0) {\n        if (shields >= remainingDamage) {\n            shieldDamage = remainingDamage\n            remainingDamage = 0\n        } else {\n            shieldDamage = shields\n            remainingDamage -= shields\n        }\n    }\n\n    if (remainingDamage > 0) {\n        remainingDamage += pierce\n        remainingDamage -= lowestArmour\n\n        if (remainingDamage > 0) {\n            woundDamage = remainingDamage\n        }\n   }\n\n    return { shieldDamage, woundDamage }\n}\n\nconst calculateBatchDamage = async ({ damageRoll, pierce, damageMultiplier }) => {\n    const selectedTokens = canvas.tokens.controlled\n\n    if (!selectedTokens.length) {\n        ui.notifications.error('No tokens selected.')\n        return\n    }\n\n    if (selectedTokens.some((token) => token.actor.type === 'Vehicle')) {\n        ui.notifications.error('Vehicles not supported.')\n        return\n    }\n\n    const damage = rollDice(damageRoll)\n\n    if (!damage) {\n        ui.notifications.error('Invalid damage roll.')\n        return\n    }\n\n    const tokensToUpdate = selectedTokens.map(async (token, index) => {\n        const { shieldDamage, woundDamage } = calculateDamage({ actor: token.actor, damage, pierce, damageMultiplier })\n\n        await token.actor.update({\n            \"system.wounds.value\": token.actor.system.wounds.value - woundDamage,\n            \"system.shields.value\": token.actor.system.shields.value - shieldDamage\n        })\n\n        if (token.actor.system.wounds.value <= 0) {\n            return `[${index + 1}] ${token.actor.name} is dead.`\n        } else if (shieldDamage > 0) {\n            return `[${index + 1}] ${token.actor.name} took ${shieldDamage} shield damage and ${woundDamage} wound damage.`\n        } else {\n            return `[${index + 1}] ${token.actor.name} took ${woundDamage} wound damage.`\n        }\n    })\n\n    const messages = await Promise.all(tokensToUpdate)\n\n    const chatMessage = messages.join('<br>')\n\n    ChatMessage.create({\n        user: game.user._id,\n        speaker: ChatMessage.getSpeaker(),\n        content: chatMessage,\n    });\n}\n\nconst requiredSection = `\n<fieldset class=\"form-section\">\n    <legend>Required Inputs</legend>\n    <label class='input-label'>\n        Damage Roll\n        <input type=\"text\" name=\"damageRoll\" placeholder=\"e.g. 4d10 + 24\" />\n    </label>\n\n    <label class='input-label'>\n        Pierce\n        <input type=\"number\" name=\"pierce\" value=\"0\" />\n    </label>\n</fieldset>\n`\n\nconst damageModifiersSection = `\n<fieldset class=\"form-section\">\n    <legend>Damage Modifiers</legend>\n    <label class='input-label'>\n        Damage Multiplier\n        <input type=\"number\" name=\"damageMultiplier\" class=\"damage-multiplier-input\" value=\"1\" />\n    </label>\n</fieldset>\n`\n\nconst formSection = `\n<form class='form'>\n    ${requiredSection}\n    ${damageModifiersSection}\n</form>\n`\n\nconst dialogStyles = `\n<style>\n    .form {\n        margin-bottom: 5px;\n        display: flex;\n        flex-direction: column;\n        gap: 5px;\n    }\n    .form-section {\n        display: flex;\n        flex-wrap: nowrap;\n        align-items: center;\n        gap: 10px;\n    }\n    .input-label {\n        display: flex;\n        align-items: center;\n        gap: 10px;\n        white-space: nowrap;\n    }\n</style>\n`;\n\nnew Dialog({\n    title: 'Ordnance Batch Damage Calculator',\n    content: `\n        ${dialogStyles}\n        ${formSection}\n    `,\n    buttons:{\n        confirm: {\n            icon: \"<i class='fas fa-check'></i>\",\n            label: \"Calculate\",\n            callback: async (html) => {\n                const damageRoll = html.find(\"input[name='damageRoll']\").val()\n                const pierce = parseInt(html.find(\"input[name='pierce']\").val(), 10)\n                const damageMultiplier = parseInt(html.find(\"input[name='damageMultiplier']\").val(), 10)\n\n                await calculateBatchDamage({ damageRoll, pierce, damageMultiplier })\n            },\n        },\n        cancel: {\n            label: 'Cancel'\n        }\n    }\n}).render(true);",
+    "folder": null,
+    "flags": {
+      "exportSource": {
+        "world": "test",
+        "system": "mythic",
+        "coreVersion": "11.315",
+        "systemVersion": "0.3.6"
+      }
+    },
+    "_stats": {
+      "systemId": "mythic",
+      "systemVersion": "0.3.6",
+      "coreVersion": "11.315",
+      "createdTime": 1738622147137,
+      "modifiedTime": 1738623673177,
+      "lastModifiedBy": "9ReVRlywWl9KNYH8"
+    }
   }
 ]
