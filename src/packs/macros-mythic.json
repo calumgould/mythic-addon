@@ -1,5 +1,6 @@
 [
   {
+    "_id": "mythic-damage-calculator",
     "name": "Damage Calculator",
     "type": "script",
     "scope": "global",
