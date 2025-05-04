@@ -7,6 +7,7 @@
   },
   "scripts": {
     "build": "tsc && vite build",
+    "build:dev": "tsc && yarn macros:embed && vite build",
     "prettier": "prettier --write .",
     "prepare": "husky",
     "macros:embed": "ts-node src/scripts/embedMacros.ts"
