@@ -1,0 +1,1 @@
+yarn macros:embed && git add src/packs/*

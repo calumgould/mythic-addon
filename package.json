@@ -7,10 +7,14 @@
   },
   "scripts": {
     "build": "tsc && vite build",
-    "prettier": "prettier --write ."
+    "prettier": "prettier --write .",
+    "prepare": "husky",
+    "macros:embed": "ts-node src/scripts/embedMacros.ts"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
     "prettier": "^3.4.2",
+    "ts-node": "^10.9.2",
     "typescript": "~5.6.2",
     "vite": "^6.0.5"
   },

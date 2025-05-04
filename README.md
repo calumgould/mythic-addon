@@ -45,7 +45,36 @@ Also includes some extra options on the form:
 - Hitting multiple breakpoints on a vehicle, e.g. with blast
 - Ignore certain hits (e.g. evading)
 
-## Creating a new release
+## Development
+
+### Local Development
+
+In order to test this without needing to create a new release everytime you'd need to test changes to this module on Foundry, you can create a symlink to the `dist` folder in your Foundry modules.
+
+#### Windows
+
+Open PowerShell as an admin and run:
+```shell
+New-Item -ItemType SymbolicLink -Target "$(pwd)\dist" -Path "$env:LOCALAPPDATA\FoundryVTT\Data\modules\mythic-addon"
+```
+
+#### MacOS
+
+Open your preferred Terminal client and run:
+```
+ln -s $PWD/dist $HOME/Library/Application\ Support/FoundryVTT/Data/modules/mythic-addon
+```
+
+Once this is done, the module should show up in your Foundry client and reflect the code you have locally.
+
+To test any changes you make now, follow the below steps:
+1. Close Foundry
+2. Run `yarn build`
+3. Re-open Foundry
+
+Now the module should have updated for your local changes.
+
+### Creating a new release
 
 Update the version in `package.json` and `module.json`
 First run
